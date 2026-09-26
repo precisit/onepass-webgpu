@@ -11,11 +11,35 @@ Research-grade. TypeScript + WGSL, no WebAssembly, no dependencies at runtime. C
 
 | Milestone | State |
 | --- | --- |
-| A1: v2 Connect Four model on WebGPU, offline-compiled plan | done: argmax parity on all 17 325 eval positions (f32), see below |
+| A1: v2 Connect Four model on WebGPU, offline-compiled plan | done: argmax parity on all 17 325 eval positions (f32), 4.1 ms per move, see below |
 | Speed protocol (`SPEED-PROTOCOL.md`) | frozen before the first measurement |
 | A2: load the ONNX graph in the browser (no offline plan) | next |
 | int8 weights (load the published int8 file directly) | planned |
 | Plugin API for custom weight formats | planned |
+
+## Results (A1, v2 Connect Four model)
+
+Correctness: on all 17 325 positions of the Connect Four eval set, run through the demo page's own code path in
+headless Chrome, the f32 runtime chooses the same column as ONNX Runtime (CPU, fp32) every time; the largest
+score difference is 6.6e-5. With f16 weights, 17 322 of 17 325 match (the other three are near ties).
+
+Speed, under [SPEED-PROTOCOL.md](SPEED-PROTOCOL.md) (500 eval positions after 20 warm-up moves, one decision at a
+time, three runs, median of the three medians). Apple M1 Max, Chrome 153 (`--headless=new`, Metal adapter), on AC
+power; the machine was shared with other jobs (load average 25 to 75 during the runs). Record:
+[`bench/results/2026-09-26-M1Max-chrome.json`](bench/results/2026-09-26-M1Max-chrome.json), runtime commit `e1823f3`.
+
+| backend | model file | median | p95 | set-up + first move | runtime code (gzip) |
+| --- | --- | ---: | ---: | ---: | ---: |
+| onepass-webgpu, f32 | fp32 ONNX, 29.7 MB | **4.1 ms** | 5.1 ms | 144 ms | **22 KB (7 KB)** |
+| onepass-webgpu, f16 weights | the same file | 3.9 ms | 4.4 ms | 127 ms | 22 KB (7 KB) |
+| onnxruntime-web 1.30, wasm | int8 ONNX, 7.8 MB | 20.4 ms | 21.4 ms | 398 ms | 14.3 MB (3.7 MB) |
+| onnxruntime-web 1.30, wasm | fp32 ONNX, 29.7 MB | 19.5 ms | 21.2 ms | 385 ms | 14.3 MB (3.7 MB) |
+
+- GPU time per move (timestamp queries around the compute pass): 2.8 ms. The rest of the 4.1 ms is submit and read-back.
+- Batched (onepass-webgpu only; the ONNX file has a fixed batch of 1): 64 positions per call take 34 ms,
+  0.53 ms per position (f32), or 0.36 ms per position with f16 weights.
+- onnxruntime-web ran single-threaded, as on a page without cross-origin isolation (for example GitHub Pages).
+- The fp32 download (29.7 MB) is the price of A1: loading the int8 file directly is on the list.
 
 ## Use
 
