@@ -1,0 +1,32 @@
+<!doctype html>
+<title>onepass-webgpu cool-down (development)</title>
+<script type="module">
+// How the first decision after an idle pause is slowed, and what warms it up. Development only.
+// ?pauses=1000,3000&warm=none|full  (full = one throwaway decision 450 ms before the timed one)
+import { Engine } from "../dist/onepass-webgpu.js";
+const q = new URLSearchParams(location.search);
+const pauses = (q.get("pauses") ?? "1000,3000").split(",").map(Number);
+const warm = q.get("warm") ?? "none";
+const reps = Number(q.get("reps") ?? 3);
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+const base = "../work/c4-v2/";
+try {
+  const [plan, onnx] = await Promise.all([fetch(base + "plan.json").then((r) => r.json()), fetch(base + "onepass-c4-v2.onnx").then((r) => r.arrayBuffer())]);
+  const engine = await Engine.load(plan, onnx, { gpuTiming: true });
+  const ctx = new Int32Array(44).fill(47), opt = new Int32Array(56).fill(100), mask = new Int32Array(7).fill(1);
+  for (let i = 0; i < 20; i += 1) await engine.score(ctx, opt, mask);
+  const out = {};
+  for (const pause of pauses) {
+    const rows = [];
+    for (let r = 0; r < reps; r += 1) {
+      await sleep(pause);
+      if (warm === "full") { await engine.score(ctx, opt, mask); await sleep(450); }
+      const t = performance.now();
+      await engine.score(ctx, opt, mask);
+      rows.push(+(performance.now() - t).toFixed(1));
+    }
+    out[pause] = rows;
+  }
+  window.__result = { warm, first_decision_ms_by_pause: out };
+} catch (e) { window.__result = { error: String(e?.stack ?? e) }; }
+</script>

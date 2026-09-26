@@ -1,10 +1,14 @@
 <!doctype html>
 <title>onepass-webgpu idle latency (development)</title>
+<style>#spin { width: 80px; height: 80px; background: #e8503a; border-radius: 50%; }</style>
+<div id="spin"></div>
 <script type="module">
 // Latency of a single decision after an idle pause (as between moves in a game). ?pause=1000
 import { Engine } from "../dist/onepass-webgpu.js";
 const q = new URLSearchParams(location.search);
 const pause = Number(q.get("pause") ?? 1000);
+// ?animate=1 keeps a CSS-transform animation running, like a disc dropping on the demo page
+if (q.get("animate") === "1") document.getElementById("spin").animate([{ transform: "translateY(0)" }, { transform: "translateY(300px)" }], { duration: 400, iterations: Infinity });
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 const base = "../work/c4-v2/";
 try {
@@ -15,6 +19,9 @@ try {
   const rows = [];
   for (let i = 0; i < 12; i += 1) {
     await sleep(pause);
+    // ?wake=1: the page's pattern: wake the GPU when the user clicks, score after the disc has dropped
+    if (q.get("wake") === "1") { await engine.wake(); await sleep(450); }
+    else if (q.get("wake") === "2") { engine.wake(); await sleep(450); }
     const t = performance.now();
     await engine.score(ctx, opt, mask);
     const first = performance.now() - t;
@@ -23,6 +30,7 @@ try {
     await engine.score(ctx, opt, mask);
     rows.push({ first: +first.toFixed(1), gpu_first: +g1.toFixed(2), second: +(performance.now() - t2).toFixed(1), gpu_second: +engine.lastGpuMs.toFixed(2) });
   }
-  window.__result = { pause, rows };
+  const med = (k) => rows.map((r) => r[k]).sort((a, b) => a - b)[rows.length >> 1];
+  window.__result = { wake: q.get("wake"), pause, animate: !!q.get("animate"), median: { first: med("first"), gpu_first: med("gpu_first"), second: med("second"), gpu_second: med("gpu_second") } };
 } catch (e) { window.__result = { error: String(e?.stack ?? e) }; }
 </script>

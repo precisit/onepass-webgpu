@@ -380,6 +380,31 @@ export class Engine {
     return program;
   }
 
+  /**
+   * Warm the GPU ahead of a decision. After one to two idle seconds the GPU and the browser's GPU
+   * process drop into low-power states, and the next decision pays 10-100 ms for waking them (measured
+   * on an M1 Max; the compute itself stays the same). A trivial submit does not wake them; real work
+   * does. This re-runs the model on whatever inputs are in its buffers and resolves when the GPU is done.
+   * Call it when a decision is coming (for example when the user clicks), a few hundred ms ahead.
+   */
+  wake(batch = 1): Promise<void> {
+    const run = this.busy.then(async () => {
+      const program = this.program(batch);
+      const encoder = this.device.createCommandEncoder();
+      const pass = encoder.beginComputePass();
+      for (const d of program.dispatches) {
+        pass.setPipeline(d.pipeline);
+        pass.setBindGroup(0, d.bindGroup);
+        pass.dispatchWorkgroups(...d.groups);
+      }
+      pass.end();
+      this.device.queue.submit([encoder.finish()]);
+      await this.device.queue.onSubmittedWorkDone();
+    });
+    this.busy = run.catch(() => undefined);
+    return run;
+  }
+
   /** Number of GPU dispatches per call (for reporting). */
   dispatchCount(batch = 1): number {
     return this.program(batch).dispatches.length;

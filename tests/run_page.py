@@ -22,6 +22,7 @@ def main():
     p.add_argument("--timeout", type=float, default=900)
     p.add_argument("--root", type=Path, default=ROOT)
     p.add_argument("--browser", default="chrome")
+    p.add_argument("--headed", action="store_true", help="a visible window (real compositor, display refresh)")
     a = p.parse_args()
     class Quiet(http.server.SimpleHTTPRequestHandler):
         def log_message(self, *args):
@@ -32,8 +33,8 @@ def main():
     threading.Thread(target=server.serve_forever, daemon=True).start()
     with sync_playwright() as pw:
         if a.browser == "chrome":
-            browser = pw.chromium.launch(channel="chrome", headless=True,
-                                         args=["--headless=new", "--enable-unsafe-webgpu", "--enable-features=Vulkan"])
+            browser = pw.chromium.launch(channel="chrome", headless=not a.headed,
+                                         args=[] if a.headed else ["--headless=new"])
         else:
             browser = pw.webkit.launch(headless=True)
         page = browser.new_page()
