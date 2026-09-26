@@ -58,6 +58,13 @@ The plan is small (a few KB of JSON). It names the ONNX initializer each weight 
 reads its weights straight out of the same `.onnx` file that onnxruntime-web would load. `score()` also takes
 a batch size for several positions per call (`Engine.load(..., { maxBatch: 64 })`).
 
+**Warm up before an interactive decision.** After one to two idle seconds, the GPU and the browser's GPU
+process drop into low-power states. The first decision then pays 10 to 100 ms to wake them, even though the
+compute itself still takes 4 ms (measured on an M1 Max, Chrome 153, visible window; `tests/cooldown.html`).
+A trivial submit does not wake them; real work does. `engine.wake()` re-runs the model on the inputs already
+in its buffers. Call it a few hundred ms before a decision you want fast, for example when the user clicks.
+The demo does this while the user's disc drops, and then gets about 5 ms per move after any pause.
+
 `Engine.load` refuses a software WebGPU adapter (such as SwiftShader) unless `allowSoftware` is set: numbers
 from a software adapter say nothing about a real GPU.
 
