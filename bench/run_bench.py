@@ -26,6 +26,7 @@ ROOT = Path(__file__).resolve().parents[1]
 BACKENDS = {
     "onepass-f32": "backend=onepass&precision=f32",
     "onepass-f16": "backend=onepass&precision=f16",
+    "onepass-int8": "backend=onepass&precision=f32&weights=int8&plan=../work/c4-v2-int8/plan.json",
     "ort-wasm-int8": "backend=ort&model=int8",
     "ort-wasm-fp32": "backend=ort&model=fp32",
 }

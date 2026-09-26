@@ -11,6 +11,8 @@ const q = new URLSearchParams(location.search);
 const backend = q.get("backend");
 const precision = q.get("precision") ?? "f32";
 const modelKind = q.get("model") ?? "fp32";
+const planPath = q.get("plan"); // onepass: another plan (e.g. the int8 file's), relative to this page
+const weights = q.get("weights") ?? "fp32"; // onepass: which file the plan reads
 const data = q.get("data") ?? "../work/c4-v2/";
 const WARM = 20, TIMED = 500, CHECK = 50, SEED = 20260927;
 const log = (s) => { document.getElementById("log").textContent += s + "\n"; };
@@ -66,17 +68,17 @@ async function main() {
   ]);
   const picks = selection(reference.positions);
   const inputs = picks.map((p) => encode(boards.subarray(p * 42, p * 42 + 42)));
-  const result = { backend, precision: backend === "ort" ? modelKind : precision, userAgent: navigator.userAgent,
+  const result = { backend, precision: backend === "ort" ? modelKind : weights === "int8" ? `int8 weights, ${precision}` : precision, userAgent: navigator.userAgent,
                    crossOriginIsolated: self.crossOriginIsolated, selection: { seed: SEED, warm: WARM, timed: TIMED } };
 
   // ---- cold start: fetch, set-up, first decision
-  const modelFile = backend === "ort" && modelKind === "int8" ? "onepass-c4-v2-int8.onnx" : "onepass-c4-v2.onnx";
+  const modelFile = (backend === "ort" ? modelKind : weights) === "int8" ? "onepass-c4-v2-int8.onnx" : "onepass-c4-v2.onnx";
   const t0 = now();
   let score, runtimeSetupStart, extra = {};
   if (backend === "onepass") {
     const [{ Engine }, plan, bytes] = await Promise.all([
       import("../dist/onepass-webgpu.js"),
-      fetch(data + "plan.json").then((r) => r.json()),
+      fetch(planPath ?? data + "plan.json").then((r) => r.json()),
       fetch(data + modelFile).then((r) => r.arrayBuffer()),
     ]);
     result.model = { file: modelFile, bytes: bytes.byteLength };
@@ -123,7 +125,7 @@ async function main() {
     for (let k = 1; k < 7; k += 1) if (legal[k] && out[k] > out[best]) best = k;
     agree += best === reference.argmax[picks[WARM + i]] ? 1 : 0;
   }
-  const exact = backend === "onepass" && precision === "f32";
+  const exact = backend === "onepass" && precision === "f32" && weights !== "int8";
   result.check = { positions: CHECK, agree, required: exact ? CHECK : CHECK - 2 };
   result.check.pass = agree >= result.check.required;
   if (!result.check.pass) return result;
