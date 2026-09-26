@@ -19,13 +19,15 @@ Research-grade. TypeScript + WGSL, no WebAssembly, no dependencies at runtime. C
 
 ## Results (A1, v2 Connect Four model)
 
-Correctness: on all 17 325 positions of the Connect Four eval set, run through the demo page's own code path in
+Correctness ([record](tests/results/2026-09-27-parity-c4-v2.json)): on all 17 325 positions of the Connect Four eval set, run through the demo page's own code path in
 headless Chrome, the f32 runtime chooses the same column as ONNX Runtime (CPU, fp32) every time; the largest
 score difference is 6.6e-5. With f16 weights, 17 322 of 17 325 match (the other three are near ties).
 
 Speed, under [SPEED-PROTOCOL.md](SPEED-PROTOCOL.md) (500 eval positions after 20 warm-up moves, one decision at a
 time, three runs, median of the three medians). Apple M1 Max, Chrome 153 (`--headless=new`, Metal adapter), on AC
-power; the machine was shared with other jobs (load average 25 to 75 during the runs). Record:
+power; the machine was busy with other jobs (load average 25 to 75 during the runs), so treat the absolute
+numbers as provisional; a run on a quiet machine will be added. Both runtimes were measured under the same
+conditions. Record:
 [`bench/results/2026-09-26-M1Max-chrome.json`](bench/results/2026-09-26-M1Max-chrome.json), runtime commit `e1823f3`.
 
 | backend | model file | median | p95 | set-up + first move | runtime code (gzip) |

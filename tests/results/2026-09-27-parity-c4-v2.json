@@ -1,0 +1,45 @@
+{
+ "what": "argmax parity, all 17 325 Connect Four eval positions, through demo/c4-speed's own encoder and engine path",
+ "page": "precisit/onepass-web demo/c4-speed at f16a4e9 (runtime onepass-webgpu e1823f3)",
+ "reference": "ONNX Runtime CPU fp32 on onepass-c4-v2.onnx (sha256 532c63f0...), tests/make_reference.py",
+ "browser": "Chrome 153, --headless=new, installed Google Chrome",
+ "machine": "Apple M1 Max",
+ "runs": [
+  {
+   "precision": "f32",
+   "encoder_ok": true,
+   "adapter": {
+    "vendor": "apple",
+    "architecture": "metal-3"
+   },
+   "gpu_ok": true,
+   "parity": {
+    "positions": 17325,
+    "argmax_agree": 17325,
+    "flips": [],
+    "max_abs_diff": 6.628036499023438e-05,
+    "ms_total": 60212
+   }
+  },
+  {
+   "precision": "f16",
+   "encoder_ok": true,
+   "adapter": {
+    "vendor": "apple",
+    "architecture": "metal-3"
+   },
+   "gpu_ok": true,
+   "parity": {
+    "positions": 17325,
+    "argmax_agree": 17322,
+    "flips": [
+     5293,
+     12021,
+     12237
+    ],
+    "max_abs_diff": 0.01568436622619629,
+    "ms_total": 56835
+   }
+  }
+ ]
+}

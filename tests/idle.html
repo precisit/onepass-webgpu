@@ -1,0 +1,28 @@
+<!doctype html>
+<title>onepass-webgpu idle latency (development)</title>
+<script type="module">
+// Latency of a single decision after an idle pause (as between moves in a game). ?pause=1000
+import { Engine } from "../dist/onepass-webgpu.js";
+const q = new URLSearchParams(location.search);
+const pause = Number(q.get("pause") ?? 1000);
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+const base = "../work/c4-v2/";
+try {
+  const [plan, onnx] = await Promise.all([fetch(base + "plan.json").then((r) => r.json()), fetch(base + "onepass-c4-v2.onnx").then((r) => r.arrayBuffer())]);
+  const engine = await Engine.load(plan, onnx, { gpuTiming: true });
+  const ctx = new Int32Array(44).fill(47), opt = new Int32Array(56).fill(100), mask = new Int32Array(7).fill(1);
+  for (let i = 0; i < 20; i += 1) await engine.score(ctx, opt, mask);
+  const rows = [];
+  for (let i = 0; i < 12; i += 1) {
+    await sleep(pause);
+    const t = performance.now();
+    await engine.score(ctx, opt, mask);
+    const first = performance.now() - t;
+    const g1 = engine.lastGpuMs;
+    const t2 = performance.now();
+    await engine.score(ctx, opt, mask);
+    rows.push({ first: +first.toFixed(1), gpu_first: +g1.toFixed(2), second: +(performance.now() - t2).toFixed(1), gpu_second: +engine.lastGpuMs.toFixed(2) });
+  }
+  window.__result = { pause, rows };
+} catch (e) { window.__result = { error: String(e?.stack ?? e) }; }
+</script>
