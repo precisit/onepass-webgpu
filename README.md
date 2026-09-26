@@ -14,7 +14,7 @@ Research-grade. TypeScript + WGSL, no WebAssembly, no dependencies at runtime. C
 | A1: v2 Connect Four model on WebGPU, offline-compiled plan | done: argmax parity on all 17 325 eval positions (f32), 4.1 ms per move, see below |
 | Speed protocol (`SPEED-PROTOCOL.md`) | frozen before the first measurement |
 | A2: load the ONNX graph in the browser (no offline plan) | next |
-| int8 weights (load the published int8 file directly) | planned |
+| int8 weights (load the published int8 file directly) | done: weights stay 8-bit on the GPU, unpacked inside the matmul; parity with its reference on all 17 325 positions, see below |
 | Plugin API for custom weight formats | planned |
 
 ## Results (A1, v2 Connect Four model)
@@ -41,7 +41,23 @@ conditions. Record:
 - Batched (onepass-webgpu only; the ONNX file has a fixed batch of 1): 64 positions per call take 34 ms,
   0.53 ms per position (f32), or 0.36 ms per position with f16 weights.
 - onnxruntime-web ran single-threaded, as on a page without cross-origin isolation (for example GitHub Pages).
-- The fp32 download (29.7 MB) is the price of A1: loading the int8 file directly is on the list.
+- The fp32 download (29.7 MB) is the price of A1; the int8 file (7.8 MB) now loads directly, see below.
+
+### int8 file, weights only
+
+`compile_onepass.py` also reads files quantized by ONNX Runtime's dynamic quantization (`MatMulInteger`,
+per-tensor int8 weights). The runtime keeps those weights packed, four per 32-bit word, in GPU memory (7.7 MB
+instead of 29.5 MB), and each matmul thread unpacks its word to floats in registers; the math stays f32. That is
+weight-only int8: onnxruntime-web also rounds the activations to 8 bits before each matmul, so its scores differ
+slightly by design.
+
+- Parity ([record](tests/results/2026-09-27-parity-c4-v2-int8.json)): on all 17 325 eval positions, through the demo
+  page, the WebGPU int8 path chooses the same column as its reference (the plan's numpy model with dequantized
+  weights), largest score difference 1.7e-5.
+- Against ONNX Runtime fp32: same column on 17 128 of 17 325 positions. onnxruntime-web's own int8 on the same file:
+  17 004. So the weight-only path stays closer to the fp32 model.
+- Speed: at batch 1 about the same as f32 (a move is bound by dispatches, not weight bandwidth), a little faster at
+  batch 64. The protocol record follows.
 
 ## Use
 

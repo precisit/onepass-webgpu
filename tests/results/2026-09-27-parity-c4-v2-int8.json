@@ -1,0 +1,26 @@
+{
+ "what": "int8 file, weight-only on WebGPU: argmax parity on all 17 325 Connect Four eval positions, through demo/c4-speed's own encoder and engine path",
+ "gates": {
+  "argmax_equal_to_plan_reference": "all positions",
+  "max_abs_score_difference": "< 0.02"
+ },
+ "reference": "numpy model of the plan (int8 weights dequantized, f32 math), tests/make_plan_reference.py, file onepass-c4-v2-int8.onnx (sha256 015523d2...)",
+ "page": "demo/c4-speed with runtime onepass-webgpu 29a830c",
+ "browser": "Chrome 153, --headless=new",
+ "machine": "Apple M1 Max",
+ "result": {
+  "positions": 17325,
+  "argmax_agree": 17325,
+  "flips": [],
+  "max_abs_diff": 1.6927719116210938e-05,
+  "ms_total": 77256
+ },
+ "context": {
+  "same_column_as_ort_fp32": {
+   "webgpu_int8_weight_only": 17128,
+   "ort_int8_same_file": 17004,
+   "positions": 17325
+  },
+  "same_column_as_ort_int8": 17058
+ }
+}
