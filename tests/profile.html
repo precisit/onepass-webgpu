@@ -6,12 +6,12 @@ import { Engine } from "../dist/onepass-webgpu.js";
 const q = new URLSearchParams(location.search);
 const precision = q.get("precision") ?? "f32";
 const batch = Number(q.get("batch") ?? 1);
-const base = "../work/c4-v2/";
+const base = q.get("base") ?? "../work/c4-v2/";
 const tuning = {};
 if (q.get("split")) tuning.splitTarget = Number(q.get("split"));
 if (q.get("qkv")) tuning.qkvSplitTarget = Number(q.get("qkv"));
 try {
-  const [plan, onnx] = await Promise.all([fetch(base + "plan.json").then((r) => r.json()), fetch(base + "onepass-c4-v2.onnx").then((r) => r.arrayBuffer())]);
+  const [plan, onnx] = await Promise.all([fetch(base + "plan.json").then((r) => r.json()), fetch(base + (q.get("model") ?? "onepass-c4-v2.onnx")).then((r) => r.arrayBuffer())]);
   const engine = await Engine.load(plan, onnx, { precision, maxBatch: batch, gpuTiming: true, tuning });
   const ctx = new Int32Array(batch * 44).fill(47), opt = new Int32Array(batch * 56).fill(100), mask = new Int32Array(batch * 7).fill(1);
   for (let i = 0; i < 30; i += 1) await engine.score(ctx, opt, mask, batch);

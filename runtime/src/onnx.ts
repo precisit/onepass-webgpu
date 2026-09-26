@@ -108,3 +108,14 @@ export function floatTensor(init: Initializer, transpose = false): Float32Array 
   for (let r = 0; r < rows; r += 1) for (let c = 0; c < cols; c += 1) out[c * rows + r] = src[r * cols + c];
   return out;
 }
+
+/** A per-tensor quantized initializer (int8 or uint8) as floats: (q - zeroPoint) * scale. */
+export function dequantTensor(init: Initializer, scale: number, zeroPoint: number): Float32Array {
+  if (init.dataType !== 2 && init.dataType !== 3) throw new Error(`onnx: ${init.name} is not int8 or uint8`);
+  const q = init.dataType === 3
+    ? new Int8Array(init.bytes.buffer, init.bytes.byteOffset, init.bytes.byteLength)
+    : init.bytes;
+  const out = new Float32Array(q.length);
+  for (let i = 0; i < q.length; i += 1) out[i] = Math.fround(Math.fround(q[i] - zeroPoint) * scale);
+  return out;
+}

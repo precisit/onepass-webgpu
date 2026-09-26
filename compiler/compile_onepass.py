@@ -53,10 +53,15 @@ def extract(model: onnx.ModelProto) -> tuple[dict, dict]:
                 raise Unrecognised(f"unsupported Gemm attributes {a}")
             bias = node.input[2] if len(node.input) > 2 and node.input[2] in inits else None
             linears.append(((node.input[1], bool(a.get("transB", 0))), bias, node))
-    emb = inits.get("model.embedding.weight")
-    if emb is None:
+        elif node.op_type == "MatMulInteger" and node.input[1] in inits:
+            # ONNX Runtime dynamic quantization: int8 weights [K, N] with a per-tensor scale; the
+            # activations are quantized on the fly, which this runtime does not copy (weights only)
+            quant_info(inits, node.input[1])
+            linears.append(((node.input[1], False), None, node))
+    emb_name = next((n for n in ("model.embedding.weight", "model.embedding.weight_quantized") if n in inits), None)
+    if emb_name is None:
         raise Unrecognised("no model.embedding.weight")
-    vocab, width = emb.shape
+    vocab, width = inits[emb_name].shape
 
     def layer_prefixes(root: str) -> list[str]:
         found = sorted({int(n.split(".")[3]) for n in inits if n.startswith(f"model.{root}.layers.")})
@@ -71,7 +76,7 @@ def extract(model: onnx.ModelProto) -> tuple[dict, dict]:
         raise Unrecognised(f"expected {expected} weight matmuls, found {len(linears)}")
 
     # every tensor is a reference to an ONNX initializer: (name, transpose to [in, out])
-    tensors: dict[str, tuple[str, bool]] = {"embedding": ("model.embedding.weight", False)}
+    tensors: dict[str, tuple[str, bool]] = {"embedding": (emb_name, False)}
 
     def shape(ref):
         a = inits[ref[0]]
@@ -83,10 +88,25 @@ def extract(model: onnx.ModelProto) -> tuple[dict, dict]:
     tensors["pos_context"] = (pos[ctx_len], False)
     tensors["pos_option"] = (pos[opt_len], False)
 
+    # assign matmuls to layers by the module path in the node names ("/model/encoder/layers.0/..."), since a
+    # quantized export may interleave layers; fall back to execution order for unnamed nodes
+    named = all(l[2].name.startswith("/model/") for l in linears)
+    used: set[int] = set()
+
+    def layer_linears(prefix: str, index: int) -> list:
+        if not named:
+            return linears[index * per_layer:(index + 1) * per_layer]
+        root, sub, layers, i = prefix.split(".")
+        mine = [l for l in linears if l[2].name.startswith(f"/{root}/{sub}/{layers}.{i}/")]
+        if len(mine) != per_layer:
+            raise Unrecognised(f"{prefix}: expected {per_layer} weight matmuls, found {len(mine)}")
+        used.update(id(l) for l in mine)
+        return mine
+
     ff = None
     for index, prefix in enumerate(ctx_layers + opt_layers):
         name = f"layer{index}" if index < len(ctx_layers) else "option_layer"
-        qkv, out, ff1, ff2 = linears[index * per_layer:(index + 1) * per_layer]
+        qkv, out, ff1, ff2 = layer_linears(prefix, index)
         checks = [(shape(qkv[0]), (width, 3 * width)), (shape(out[0]), (width, width)),
                   (shape(ff1[0])[0], width), (shape(ff2[0])[1], width)]
         for got, want in checks:
@@ -114,7 +134,9 @@ def extract(model: onnx.ModelProto) -> tuple[dict, dict]:
             raise Unrecognised("head matmul not fed by a LayerNormalization")
         return src.input[1]
 
-    head = linears[-3:]
+    head = [l for l in linears if id(l) not in used] if named else linears[-3:]
+    if len(head) != 3:
+        raise Unrecognised(f"expected three head matmuls, found {len(head)}")
     roles = [fed_by(n) for _, _, n in head]
     query = [h for h, r in zip(head, roles) if r == "model.head.option_norm.weight"]
     keyval = [h for h, r in zip(head, roles) if r == "model.head.context_norm.weight"]
@@ -139,14 +161,34 @@ def extract(model: onnx.ModelProto) -> tuple[dict, dict]:
               "ff": int(ff), "rank": int(rank), "context_len": int(ctx_len), "option_slots": int(opt_slots),
               "option_len": int(opt_len), "eps": 1e-5, "activation": "relu", "norm_first": True}
     for name, ref in tensors.items():
-        if inits[ref[0]].dtype != np.float32:
+        if inits[ref[0]].dtype != np.float32 and quant_info(inits, ref[0]) is None:
             raise Unrecognised(f"{name}: initializer {ref[0]} is {inits[ref[0]].dtype}, only float32 is supported")
     return config, tensors
 
 
+def quant_info(inits: dict, name: str) -> dict | None:
+    """Per-tensor quantization of `<base>_quantized` (ONNX Runtime's naming): w = (q - zero_point) * scale."""
+    if not name.endswith("_quantized"):
+        return None
+    base = name[: -len("_quantized")]
+    scale, zp = inits.get(base + "_scale"), inits.get(base + "_zero_point")
+    if scale is None or zp is None or scale.size != 1 or zp.size != 1:
+        raise Unrecognised(f"{name}: only per-tensor scale and zero point are supported")
+    if inits[name].dtype not in (np.int8, np.uint8):
+        raise Unrecognised(f"{name}: {inits[name].dtype} weights are not supported")
+    return {"dtype": inits[name].dtype.name, "scale": float(scale), "zero_point": int(zp)}
+
+
 def materialise(model: onnx.ModelProto, refs: dict) -> dict[str, np.ndarray]:
+    """Float values of every plan tensor (quantized ones dequantized: the runtime's semantics)."""
     inits = {t.name: numpy_helper.to_array(t) for t in model.graph.initializer}
-    return {k: np.ascontiguousarray(inits[n].T if t else inits[n], dtype=np.float32) for k, (n, t) in refs.items()}
+    out = {}
+    for k, (n, t) in refs.items():
+        a, q = inits[n], quant_info(inits, n)
+        if q:
+            a = (a.astype(np.float32) - np.float32(q["zero_point"])) * np.float32(q["scale"])
+        out[k] = np.ascontiguousarray(a.T if t else a, dtype=np.float32)
+    return out
 
 
 # ---------------------------------------------------------------- numpy reference of the plan
@@ -215,12 +257,14 @@ def write_plan(out: Path, cfg: dict, refs: dict, arrays: dict, source: Path, che
     """plan.json: the architecture config plus, for every tensor, the ONNX initializer it comes from.
     The runtime reads the weights straight out of the unchanged ONNX file."""
     out.mkdir(parents=True, exist_ok=True)
+    inits = {t.name: numpy_helper.to_array(t) for t in onnx.load(str(source)).graph.initializer}
     plan = {"format": "onepass-plan/1", "architecture": "onepass-scorer", "config": cfg,
             "model": {"file": source.name, "bytes": source.stat().st_size,
                       "sha256": hashlib.sha256(source.read_bytes()).hexdigest()},
             "inputs": {"context_ids": [cfg["context_len"]], "option_ids": [cfg["option_slots"], cfg["option_len"]],
                        "option_mask": [cfg["option_slots"]]},
-            "tensors": {k: {"initializer": n, "transpose": t, "shape": list(arrays[k].shape)} for k, (n, t) in refs.items()},
+            "tensors": {k: {"initializer": n, "transpose": t, "shape": list(arrays[k].shape),
+                            **({"quant": q} if (q := quant_info(inits, n)) else {})} for k, (n, t) in refs.items()},
             "compile_check": check}
     (out / "plan.json").write_text(json.dumps(plan, indent=1) + "\n")
     return plan
@@ -256,9 +300,13 @@ def main() -> None:
         legal = mask[i] != 0
         worst = max(worst, float(np.abs(want[legal] - got[legal]).max()))
         agree += int(np.argmax(np.where(legal, want, -np.inf)) == np.argmax(np.where(legal, got, -np.inf)))
-    report = {"config": cfg, "checked": int(len(ctx)), "max_abs_logit_diff": worst, "argmax_agree": agree}
+    quantized = any(n.endswith("_quantized") for n, _ in refs.values())
+    report = {"config": cfg, "checked": int(len(ctx)), "max_abs_logit_diff": worst, "argmax_agree": agree,
+              "weights": "quantized, dequantized (weight-only); ORT also quantizes activations" if quantized else "float"}
     print(json.dumps(report))
-    if worst > 1e-3 or agree != len(ctx):
+    # a quantized file cannot match exactly (ORT quantizes the activations too); a wrong mapping shows up
+    # as chance-level agreement, so that is what the looser check catches
+    if (worst > 1e-3 or agree != len(ctx)) if not quantized else (worst > 1.0 or agree < 0.9 * len(ctx)):
         raise SystemExit("the compiled plan does not reproduce ONNX Runtime; refusing to write it")
     write_plan(args.out, cfg, refs, tensors, args.onnx, {k: v for k, v in report.items() if k != "config"})
     print(f"wrote {args.out / 'plan.json'}")

@@ -56,18 +56,33 @@ export interface MatmulVariant {
   KS: number; // K per split
   aSplits: number; // 0: A is a plain [M, K] buffer; n: A = act(sum of n partials + bias)
   aRelu: boolean;
+  /** Packed 8-bit weights (4 per u32, [K, N] row-major) with a per-tensor scale and zero point. */
+  w8?: "int8" | "uint8";
 }
 
+// four 8-bit weights of one u32 (little-endian: columns n..n+3) as floats
+const unpack8 = (kind: "int8" | "uint8") => kind === "int8" ? `
+fn unpack8(q: u32) -> vec4<f32> {
+  let s = bitcast<i32>(q);
+  return vec4<f32>(vec4<i32>((s << 24u) >> 24u, (s << 16u) >> 24u, (s << 8u) >> 24u, s >> 24u));
+}` : `
+fn unpack8(q: u32) -> vec4<f32> {
+  return vec4<f32>(f32(q & 255u), f32((q >> 8u) & 255u), f32((q >> 16u) & 255u), f32(q >> 24u));
+}`;
+
 /**
- * Partial products: Out[s, m, n] = sum_{k in split s} A[m, k] * W[k, n].
+ * Partial products: Out[s, m, n] = sum_{k in split s} A[m, k] * W[k, n]. With 8-bit weights, W stays packed
+ * in GPU memory (4 per u32) and each thread unpacks its word to floats in registers.
  * Workgroup = 64 threads x 4 columns (vec4) = 256 columns, RM rows, one K split (wg.z).
  */
 export const matmul = (f16: boolean, v: MatmulVariant) => `${header(f16)}
 const RM = ${v.RM}u;
 const KS = ${v.KS}u;
-struct P { M: u32, N: u32, K: u32, wOff: u32, aBias: u32, p5: u32, p6: u32, p7: u32 }
+struct P { M: u32, N: u32, K: u32, wOff: u32, aBias: u32, zp: f32, scale: f32, p7: u32 }
 @group(0) @binding(0) var<uniform> p: P;
-@group(0) @binding(1) var<storage, read> W: array<vec4<WT>>;
+${v.w8 ? `@group(0) @binding(1) var<storage, read> Q: array<u32>;
+${v.aSplits ? "@group(0) @binding(4) var<storage, read> W: array<vec4<WT>>;" : ""}
+${unpack8(v.w8)}` : "@group(0) @binding(1) var<storage, read> W: array<vec4<WT>>;"}
 @group(0) @binding(2) var<storage, read> A: array<f32>;
 @group(0) @binding(3) var<storage, read_write> Out: array<vec4<f32>>;
 var<workgroup> at: array<f32, ${v.RM * v.KS}>;
@@ -91,14 +106,14 @@ ${v.aSplits === 0 ? "      a = A[m * p.K + k];" : `      for (var j = 0u; j < ${
   if (n4 * 4u >= p.N) { return; }
   let stride = p.N / 4u;
   var acc: array<vec4<f32>, RM>;
-  var wi = p.wOff / 4u + k0 * stride + n4;
+  var wi = ${v.w8 ? "p.wOff" : "p.wOff / 4u"} + k0 * stride + n4;
   for (var kk = 0u; kk < KS; kk += 1u) {
-    let w = vec4<f32>(W[wi]);
+    let w = ${v.w8 ? "unpack8(Q[wi]) - vec4<f32>(p.zp)" : "vec4<f32>(W[wi])"};
     wi += stride;
     for (var r = 0u; r < RM; r += 1u) { acc[r] = fma(vec4<f32>(at[r * KS + kk]), w, acc[r]); }
   }
   let rows = min(RM, p.M - row0);
-  for (var r = 0u; r < rows; r += 1u) { Out[(wg.z * p.M + row0 + r) * stride + n4] = acc[r]; }
+  for (var r = 0u; r < rows; r += 1u) { Out[(wg.z * p.M + row0 + r) * stride + n4] = acc[r]${v.w8 ? " * p.scale" : ""}; }
 }
 `;
 

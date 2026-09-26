@@ -26,12 +26,13 @@ function encode(board, ctx, opt, mask, i) {
 try {
   const [plan, onnx, boards, ref, meta] = await Promise.all([
     fetch(base + "plan.json").then((r) => r.json()),
-    fetch(base + "onepass-c4-v2.onnx").then((r) => r.arrayBuffer()),
+    fetch(base + (q.get("model") ?? "onepass-c4-v2.onnx")).then((r) => r.arrayBuffer()),
     fetch(base + "reference/boards.bin").then((r) => r.arrayBuffer()).then((b) => new Uint8Array(b)),
     fetch(base + "reference/logits.bin").then((r) => r.arrayBuffer()).then((b) => new Float32Array(b)),
     fetch(base + "reference/reference.json").then((r) => r.json()),
   ]);
   const engine = await Engine.load(plan, onnx, { precision, maxBatch: batch });
+  log(`weights ${engine.weightFormat}, ${engine.weightBytes} bytes on the GPU`);
   log(`adapter ${engine.adapterInfo.vendor} ${engine.adapterInfo.architecture}, ${engine.dispatchCount(batch)} dispatches`);
   const n = Math.min(Number(q.get("n") ?? meta.positions), meta.positions);
   let agree = 0, maxDiff = 0, sumDiff = 0, count = 0;
@@ -56,7 +57,7 @@ try {
     }
   }
   const ms = performance.now() - t0;
-  const result = { precision, batch, positions: n, argmax_agree: agree, flips: flips.slice(0, 50),
+  const result = { precision, weights: engine.weightFormat, gpu_weight_bytes: engine.weightBytes, batch, positions: n, argmax_agree: agree, flips: flips.slice(0, 50),
     max_abs_diff: maxDiff, mean_abs_diff: sumDiff / count, ms_total: Math.round(ms),
     adapter: { vendor: engine.adapterInfo.vendor, architecture: engine.adapterInfo.architecture },
     userAgent: navigator.userAgent };

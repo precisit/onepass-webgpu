@@ -7,7 +7,7 @@
 // the weights are read straight out of the unchanged .onnx file.
 
 import * as K from "./kernels";
-import { floatTensor, readInitializers } from "./onnx";
+import { dequantTensor, floatTensor, readInitializers } from "./onnx";
 
 export { readInitializers } from "./onnx";
 
@@ -29,7 +29,22 @@ export interface Plan {
   architecture: string;
   config: PlanConfig;
   model: { file: string; bytes: number; sha256: string };
-  tensors: Record<string, { initializer: string; transpose: boolean; shape: number[] }>;
+  tensors: Record<string, PlanTensor>;
+}
+
+export interface PlanTensor {
+  initializer: string;
+  transpose: boolean;
+  shape: number[];
+  /** Per-tensor quantization of an 8-bit initializer: value = (q - zero_point) * scale. */
+  quant?: { dtype: "int8" | "uint8"; scale: number; zero_point: number };
+}
+
+interface Packed8 {
+  offsetWords: number;
+  kind: "int8" | "uint8";
+  scale: number;
+  zeroPoint: number;
 }
 
 export type Precision = "f32" | "f16";
@@ -133,6 +148,14 @@ function toHalf(src: Float32Array): Uint16Array {
 
 export class Engine {
   readonly config: PlanConfig;
+  /** "f32"/"f16" for float weights, "int8" when the matmul weights are packed 8-bit. */
+  get weightFormat(): string {
+    return this.packed.size ? `int8 (${this.precision} for the rest)` : this.precision;
+  }
+  /** Bytes of weights held on the GPU. */
+  get weightBytes(): number {
+    return this.buffers.weights.size + (this.packed.size ? this.buffers.weights8.size : 0);
+  }
   lastGpuMs: number | null = null;
   private programs = new Map<number, Program>();
   private pipelines = new Map<string, GPUComputePipeline>();
@@ -153,6 +176,8 @@ export class Engine {
     offsets: Map<string, number>,
     timing: boolean,
     readonly tuning: Tuning,
+    weights8: GPUBuffer | null = null,
+    private packed = new Map<string, Packed8>(),
   ) {
     this.config = plan.config;
     this.offsets = offsets;
@@ -172,6 +197,7 @@ export class Engine {
     }
     this.buffers = {
       weights,
+      weights8: weights8 ?? f32(4),
       ids: f32(B * (c.context_len + c.option_slots * c.option_len + c.option_slots), GPUBufferUsage.COPY_DST),
       xc: f32(ctxRows * c.width),
       yc: f32(ctxRows * c.width),
@@ -224,29 +250,54 @@ export class Engine {
       },
     });
 
-    // pack every tensor into one weight buffer; offsets are in elements
+    // Float tensors go into one weight buffer (offsets in elements). 8-bit matmul weights stay packed in a
+    // second buffer, exactly as stored in the file (offsets in u32 words); the embedding, which is only
+    // gathered, is dequantized here.
     const inits = readInitializers(onnx);
-    const parts: Float32Array[] = [];
+    const parts: { name: string; data: Float32Array }[] = [];
     const offsets = new Map<string, number>();
+    const packed = new Map<string, Packed8>();
+    const bytes8: Uint8Array[] = [];
     let total = 0;
+    let total8 = 0;
     for (const [name, t] of Object.entries(plan.tensors)) {
       const init = inits.get(t.initializer);
       if (!init) throw new Error(`the ONNX file has no initializer ${t.initializer} (for ${name})`);
-      const data = floatTensor(init, t.transpose);
       const expected = t.shape.reduce((a, b) => a * b, 1);
+      if (t.quant && name !== "embedding") {
+        if (t.transpose || t.shape.length !== 2 || t.shape[1] % 4 !== 0) throw new Error(`${name}: unsupported 8-bit layout`);
+        if (init.bytes.byteLength !== expected) throw new Error(`${name}: ${init.bytes.byteLength} bytes, plan says ${expected}`);
+        packed.set(name, { offsetWords: total8 / 4, kind: t.quant.dtype, scale: t.quant.scale, zeroPoint: t.quant.zero_point });
+        bytes8.push(init.bytes);
+        total8 += Math.ceil(init.bytes.byteLength / 256) * 256;
+        continue;
+      }
+      const data = t.quant ? dequantTensor(init, t.quant.scale, t.quant.zero_point) : floatTensor(init, t.transpose);
       if (data.length !== expected) throw new Error(`${name}: ${data.length} values, plan says ${expected}`);
       offsets.set(name, total);
-      parts.push(data);
+      parts.push({ name, data });
       total += Math.ceil(data.length / 64) * 64;
     }
     const all = new Float32Array(total);
-    for (const [i, part] of parts.entries()) all.set(part, offsets.get(Object.keys(plan.tensors)[i])!);
+    for (const { name, data } of parts) all.set(data, offsets.get(name)!);
     const upload: ArrayBufferView = precision === "f16" ? toHalf(all) : all;
     const weights = device.createBuffer({ size: upload.byteLength, usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST });
     device.queue.writeBuffer(weights, 0, upload.buffer, upload.byteOffset, upload.byteLength);
+    let weights8: GPUBuffer | null = null;
+    if (total8 > 0) {
+      weights8 = device.createBuffer({ size: total8, usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST });
+      let at = 0;
+      for (const b of bytes8) {
+        const copy = new Uint8Array(Math.ceil(b.byteLength / 4) * 4);
+        copy.set(b);
+        device.queue.writeBuffer(weights8, at, copy);
+        at += Math.ceil(b.byteLength / 256) * 256;
+      }
+    }
 
     const tuning = { ...DEFAULT_TUNING, ...options.tuning };
-    const engine = new Engine(device, info, precision, options.maxBatch ?? 1, plan, weights, offsets, timing, tuning);
+    const engine = new Engine(device, info, precision, options.maxBatch ?? 1, plan, weights, offsets, timing, tuning,
+      weights8, packed);
     engine.program(1);
     await device.queue.onSubmittedWorkDone();
     return engine;
@@ -310,10 +361,16 @@ export class Engine {
     const matmul = (M: number, Kin: number, N: number, a: GPUBuffer, out: GPUBuffer, w: string,
       aSplits = 0, aBias: string | null = null, aRelu = false, target = this.tuning.splitTarget) => {
       const { S, RM } = splits(M, Kin, N, target);
-      const v: K.MatmulVariant = { RM, KS: Kin / S, aSplits, aRelu };
+      const q = this.packed.get(w);
+      const v: K.MatmulVariant = { RM, KS: Kin / S, aSplits, aRelu, ...(q ? { w8: q.kind } : {}) };
       const pipe = this.pipeline(`mm${f16}${JSON.stringify(v)}`, () => K.matmul(f16, v));
-      add(pipe, [M, N, Kin, this.off(w), aBias ? this.off(aBias) : 0], {}, [b.weights, a, out],
-        [Math.ceil(N / 256), Math.ceil(M / RM), S]);
+      if (q) {
+        add(pipe, [M, N, Kin, q.offsetWords, aBias ? this.off(aBias) : 0], { 5: q.zeroPoint, 6: q.scale },
+          [b.weights8, a, out, ...(aSplits ? [b.weights] : [])], [Math.ceil(N / 256), Math.ceil(M / RM), S]);
+      } else {
+        add(pipe, [M, N, Kin, this.off(w), aBias ? this.off(aBias) : 0], {}, [b.weights, a, out],
+          [Math.ceil(N / 256), Math.ceil(M / RM), S]);
+      }
       return S;
     };
     const residualNorm = (M: number, part: GPUBuffer, S: number, bias: string, x: GPUBuffer, y: GPUBuffer, norm: string) => {
