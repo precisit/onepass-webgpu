@@ -1,0 +1,33 @@
+<!doctype html>
+<title>onepass-webgpu dev profile</title>
+<script type="module">
+// Development timing only (not a protocol result). ?precision=f32&batch=1
+import { Engine } from "../dist/onepass-webgpu.js";
+const q = new URLSearchParams(location.search);
+const precision = q.get("precision") ?? "f32";
+const batch = Number(q.get("batch") ?? 1);
+const base = "../work/c4-v2/";
+const tuning = {};
+if (q.get("split")) tuning.splitTarget = Number(q.get("split"));
+if (q.get("qkv")) tuning.qkvSplitTarget = Number(q.get("qkv"));
+try {
+  const [plan, onnx] = await Promise.all([fetch(base + "plan.json").then((r) => r.json()), fetch(base + "onepass-c4-v2.onnx").then((r) => r.arrayBuffer())]);
+  const engine = await Engine.load(plan, onnx, { precision, maxBatch: batch, gpuTiming: true, tuning });
+  const ctx = new Int32Array(batch * 44).fill(47), opt = new Int32Array(batch * 56).fill(100), mask = new Int32Array(batch * 7).fill(1);
+  for (let i = 0; i < 30; i += 1) await engine.score(ctx, opt, mask, batch);
+  const wall = [], gpu = [];
+  for (let i = 0; i < 300; i += 1) {
+    const t = performance.now();
+    await engine.score(ctx, opt, mask, batch);
+    wall.push(performance.now() - t); gpu.push(engine.lastGpuMs);
+  }
+  const med = (a) => a.slice().sort((x, y) => x - y)[a.length >> 1];
+  const parts = {};
+  for (let i = 0; i < 20; i += 1) {
+    const r = await engine.profile(ctx, opt, mask, batch);
+    for (const [k, v] of Object.entries(r)) (parts[k] ??= []).push(v);
+  }
+  const breakdown = Object.fromEntries(Object.entries(parts).map(([k, v]) => [k, +med(v).toFixed(3)]));
+  window.__result = { breakdown, precision, batch, wall_median: med(wall), gpu_median: med(gpu), dispatches: engine.dispatchCount(batch) };
+} catch (e) { window.__result = { error: String(e?.stack ?? e) }; }
+</script>

@@ -1,0 +1,69 @@
+<!doctype html>
+<title>onepass-webgpu parity</title>
+<pre id="log"></pre>
+<script type="module">
+// Runtime vs ONNX Runtime CPU fp32 on the eval set. Query: ?precision=f32|f16&n=17325&batch=1
+import { Engine } from "../dist/onepass-webgpu.js";
+const q = new URLSearchParams(location.search);
+const precision = q.get("precision") ?? "f32";
+const batch = Number(q.get("batch") ?? 1);
+const base = q.get("base") ?? "../work/c4-v2/";
+const log = (s) => { document.getElementById("log").textContent += s + "\n"; };
+const CELLS = ".mt";
+function encode(board, ctx, opt, mask, i) {
+  const plies = board.reduce((a, v) => a + (v > 0), 0);
+  const text = `${plies % 2 === 0 ? "1" : "2"}:` + Array.from(board, (v) => CELLS[v]).join("");
+  for (let j = 0; j < 44; j += 1) ctx[i * 44 + j] = text.charCodeAt(j) + 1;
+  let slot = 0;
+  for (let col = 0; col < 7; col += 1) {
+    if (board[35 + col] !== 0) continue;
+    const o = `column ${col + 1}`;
+    for (let j = 0; j < 8; j += 1) opt[(i * 7 + slot) * 8 + j] = o.charCodeAt(j) + 1;
+    mask[i * 7 + slot] = 1;
+    slot += 1;
+  }
+}
+try {
+  const [plan, onnx, boards, ref, meta] = await Promise.all([
+    fetch(base + "plan.json").then((r) => r.json()),
+    fetch(base + "onepass-c4-v2.onnx").then((r) => r.arrayBuffer()),
+    fetch(base + "reference/boards.bin").then((r) => r.arrayBuffer()).then((b) => new Uint8Array(b)),
+    fetch(base + "reference/logits.bin").then((r) => r.arrayBuffer()).then((b) => new Float32Array(b)),
+    fetch(base + "reference/reference.json").then((r) => r.json()),
+  ]);
+  const engine = await Engine.load(plan, onnx, { precision, maxBatch: batch });
+  log(`adapter ${engine.adapterInfo.vendor} ${engine.adapterInfo.architecture}, ${engine.dispatchCount(batch)} dispatches`);
+  const n = Math.min(Number(q.get("n") ?? meta.positions), meta.positions);
+  let agree = 0, maxDiff = 0, sumDiff = 0, count = 0;
+  const flips = [];
+  const t0 = performance.now();
+  for (let s = 0; s < n; s += batch) {
+    const m = Math.min(batch, n - s);
+    const ctx = new Int32Array(batch * 44), opt = new Int32Array(batch * 56), mask = new Int32Array(batch * 7);
+    for (let i = 0; i < m; i += 1) encode(boards.subarray((s + i) * 42, (s + i + 1) * 42), ctx, opt, mask, i);
+    for (let i = m; i < batch; i += 1) encode(boards.subarray(0, 42), ctx, opt, mask, i);
+    const out = await engine.score(ctx, opt, mask, batch);
+    for (let i = 0; i < m; i += 1) {
+      const p = s + i;
+      let best = -1, bestV = -Infinity;
+      for (let k = 0; k < 7; k += 1) {
+        if (!mask[i * 7 + k]) continue;
+        const d = Math.abs(out[i * 7 + k] - ref[p * 7 + k]);
+        maxDiff = Math.max(maxDiff, d); sumDiff += d; count += 1;
+        if (out[i * 7 + k] > bestV) { bestV = out[i * 7 + k]; best = k; }
+      }
+      if (best === meta.argmax[p]) agree += 1; else flips.push(p);
+    }
+  }
+  const ms = performance.now() - t0;
+  const result = { precision, batch, positions: n, argmax_agree: agree, flips: flips.slice(0, 50),
+    max_abs_diff: maxDiff, mean_abs_diff: sumDiff / count, ms_total: Math.round(ms),
+    adapter: { vendor: engine.adapterInfo.vendor, architecture: engine.adapterInfo.architecture },
+    userAgent: navigator.userAgent };
+  log(JSON.stringify(result));
+  window.__result = result;
+} catch (e) {
+  log("ERROR " + (e?.stack ?? e));
+  window.__result = { error: String(e?.stack ?? e) };
+}
+</script>

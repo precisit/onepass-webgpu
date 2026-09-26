@@ -1,0 +1,190 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>onepass-webgpu bench</title>
+<pre id="log"></pre>
+<script type="module">
+// One backend, one run, as SPEED-PROTOCOL.md describes. Driven by bench/run_bench.py; the result is
+// left in window.__result. Query:
+//   backend=onepass&precision=f32|f16      or   backend=ort&model=int8|fp32
+//   data=<dir with plan.json, the model files, and reference/{boards.bin,reference.json}>  model files: <data>/onepass-c4-v2(.int8).onnx
+const q = new URLSearchParams(location.search);
+const backend = q.get("backend");
+const precision = q.get("precision") ?? "f32";
+const modelKind = q.get("model") ?? "fp32";
+const data = q.get("data") ?? "../work/c4-v2/";
+const WARM = 20, TIMED = 500, CHECK = 50, SEED = 20260927;
+const log = (s) => { document.getElementById("log").textContent += s + "\n"; };
+const now = () => performance.now();
+
+function mulberry32(a) {
+  return () => {
+    a |= 0; a = (a + 0x6d2b79f5) | 0;
+    let t = Math.imul(a ^ (a >>> 15), 1 | a);
+    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+
+/** The fixed selection: a seeded shuffle of the eval set, first WARM + TIMED positions. */
+function selection(n) {
+  const idx = Array.from({ length: n }, (_, i) => i);
+  const rnd = mulberry32(SEED);
+  for (let i = n - 1; i > 0; i -= 1) {
+    const j = Math.floor(rnd() * (i + 1));
+    [idx[i], idx[j]] = [idx[j], idx[i]];
+  }
+  return idx.slice(0, WARM + TIMED);
+}
+
+const CELLS = ".mt";
+function encode(board) {
+  const ctx = new Int32Array(44), opt = new Int32Array(56), mask = new Int32Array(7);
+  const plies = board.reduce((a, v) => a + (v > 0), 0);
+  const text = `${plies % 2 === 0 ? "1" : "2"}:` + Array.from(board, (v) => CELLS[v]).join("");
+  for (let j = 0; j < 44; j += 1) ctx[j] = text.charCodeAt(j) + 1;
+  let slot = 0;
+  for (let col = 0; col < 7; col += 1) {
+    if (board[35 + col] !== 0) continue;
+    const o = `column ${col + 1}`;
+    for (let j = 0; j < 8; j += 1) opt[slot * 8 + j] = o.charCodeAt(j) + 1;
+    mask[slot] = 1;
+    slot += 1;
+  }
+  return { ctx, opt, mask };
+}
+
+const stats = (a) => {
+  const s = a.slice().sort((x, y) => x - y);
+  return { median: s[(s.length - 1) >> 1], p95: s[Math.min(s.length - 1, Math.floor(0.95 * s.length))],
+           mean: a.reduce((x, y) => x + y, 0) / a.length, n: a.length };
+};
+
+async function main() {
+  const [boards, reference] = await Promise.all([
+    fetch(data + "reference/boards.bin").then((r) => r.arrayBuffer()).then((b) => new Uint8Array(b)),
+    fetch(data + "reference/reference.json").then((r) => r.json()),
+  ]);
+  const picks = selection(reference.positions);
+  const inputs = picks.map((p) => encode(boards.subarray(p * 42, p * 42 + 42)));
+  const result = { backend, precision: backend === "ort" ? modelKind : precision, userAgent: navigator.userAgent,
+                   crossOriginIsolated: self.crossOriginIsolated, selection: { seed: SEED, warm: WARM, timed: TIMED } };
+
+  // ---- cold start: fetch, set-up, first decision
+  const modelFile = backend === "ort" && modelKind === "int8" ? "onepass-c4-v2-int8.onnx" : "onepass-c4-v2.onnx";
+  const t0 = now();
+  let score, runtimeSetupStart, extra = {};
+  if (backend === "onepass") {
+    const [{ Engine }, plan, bytes] = await Promise.all([
+      import("../dist/onepass-webgpu.js"),
+      fetch(data + "plan.json").then((r) => r.json()),
+      fetch(data + modelFile).then((r) => r.arrayBuffer()),
+    ]);
+    result.model = { file: modelFile, bytes: bytes.byteLength };
+    runtimeSetupStart = now();
+    const engine = await Engine.load(plan, bytes, { precision, maxBatch: 64 });
+    result.adapter = { vendor: engine.adapterInfo.vendor, architecture: engine.adapterInfo.architecture,
+                       device: engine.adapterInfo.device, description: engine.adapterInfo.description };
+    result.dispatches = engine.dispatchCount();
+    score = (x) => engine.score(x.ctx, x.opt, x.mask);
+    extra.engine = engine;
+    extra.plan = plan;
+    extra.bytes = bytes;
+  } else {
+    const [ort, bytes] = await Promise.all([
+      import("../node_modules/onnxruntime-web/dist/ort.wasm.min.mjs"),
+      fetch(data + modelFile).then((r) => r.arrayBuffer()),
+    ]);
+    ort.env.wasm.wasmPaths = new URL("../node_modules/onnxruntime-web/dist/", location.href).href;
+    result.model = { file: modelFile, bytes: bytes.byteLength };
+    runtimeSetupStart = now();
+    const session = await ort.InferenceSession.create(new Uint8Array(bytes), { executionProviders: ["wasm"] });
+    result.ort = { version: ort.env.versions?.web, numThreads: ort.env.wasm.numThreads };
+    score = async (x) => {
+      const out = await session.run({
+        context_ids: new ort.Tensor("int32", x.ctx, [1, 44]),
+        option_ids: new ort.Tensor("int32", x.opt, [1, 7, 8]),
+        option_mask: new ort.Tensor("int32", x.mask, [1, 7]),
+      });
+      return out[session.outputNames[0]].data;
+    };
+  }
+  const setupDone = now();
+  await score(inputs[0]);
+  const first = now();
+  result.cold = { fetch_ms: runtimeSetupStart - t0, setup_ms: setupDone - runtimeSetupStart, first_decision_ms: first - setupDone,
+                  total_ms: first - t0 };
+
+  // ---- correctness before speed: CHECK positions against ORT CPU fp32 argmax
+  let agree = 0;
+  for (let i = 0; i < CHECK; i += 1) {
+    const out = await score(inputs[WARM + i]);
+    const legal = inputs[WARM + i].mask;
+    let best = 0;
+    for (let k = 1; k < 7; k += 1) if (legal[k] && out[k] > out[best]) best = k;
+    agree += best === reference.argmax[picks[WARM + i]] ? 1 : 0;
+  }
+  const exact = backend === "onepass" && precision === "f32";
+  result.check = { positions: CHECK, agree, required: exact ? CHECK : CHECK - 2 };
+  result.check.pass = agree >= result.check.required;
+  if (!result.check.pass) return result;
+
+  // ---- warm latency, one decision at a time
+  for (let i = 0; i < WARM; i += 1) await score(inputs[i]);
+  const times = [];
+  for (let i = WARM; i < WARM + TIMED; i += 1) {
+    const t = now();
+    await score(inputs[i]);
+    times.push(now() - t);
+  }
+  result.warm = stats(times);
+
+  if (backend === "onepass") {
+    const { Engine } = await import("../dist/onepass-webgpu.js");
+    const { engine } = extra;
+    // batched: 8 and 64 positions per call
+    result.batched = {};
+    for (const b of [8, 64]) {
+      const calls = [];
+      const pack = (s) => {
+        const ctx = new Int32Array(b * 44), opt = new Int32Array(b * 56), mask = new Int32Array(b * 7);
+        for (let i = 0; i < b; i += 1) {
+          const x = inputs[(s + i) % inputs.length];
+          ctx.set(x.ctx, i * 44); opt.set(x.opt, i * 56); mask.set(x.mask, i * 7);
+        }
+        return { ctx, opt, mask };
+      };
+      const packs = Array.from({ length: 40 }, (_, i) => pack(i * b));
+      for (let i = 0; i < 5; i += 1) await engine.score(packs[i].ctx, packs[i].opt, packs[i].mask, b);
+      for (let i = 5; i < packs.length; i += 1) {
+        const t = now();
+        await engine.score(packs[i].ctx, packs[i].opt, packs[i].mask, b);
+        calls.push(now() - t);
+      }
+      const s = stats(calls);
+      result.batched[b] = { per_call: s, per_position_median_ms: s.median / b };
+    }
+    // GPU time: a separate engine with timestamp queries, never mixed into the headline
+    try {
+      const timed = await Engine.load(extra.plan, extra.bytes, { precision, gpuTiming: true });
+      const gpu = [];
+      for (let i = 0; i < WARM + 200; i += 1) {
+        await timed.score(inputs[i].ctx, inputs[i].opt, inputs[i].mask);
+        if (i >= WARM && timed.lastGpuMs !== null) gpu.push(timed.lastGpuMs);
+      }
+      result.gpu_time = gpu.length ? stats(gpu) : "timestamp-query not available";
+      timed.destroy();
+    } catch (e) { result.gpu_time = `unavailable: ${e.message || e}`; }
+  } else {
+    result.batched = "n/a: the ONNX file has a fixed batch of 1";
+  }
+
+  // runtime code the page actually loaded (decoded bytes)
+  const entries = performance.getEntriesByType("resource");
+  const code = entries.filter((e) => /onepass-webgpu\.js|onnxruntime-web\/dist\/.*\.(mjs|wasm)$/.test(e.name));
+  result.runtime_files = code.map((e) => ({ file: e.name.split("/").pop(), bytes: e.decodedBodySize }));
+  return result;
+}
+
+main().then((r) => { window.__result = r; log(JSON.stringify(r, null, 1)); })
+  .catch((e) => { window.__result = { error: String(e?.stack ?? e) }; log(String(e?.stack ?? e)); });
+</script>

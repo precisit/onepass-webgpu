@@ -1,0 +1,18 @@
+{
+  "name": "onepass-webgpu",
+  "version": "0.0.1",
+  "description": "A small WebGPU-only inference runtime for one-pass option scorers (browser games and friends).",
+  "license": "MIT",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "esbuild runtime/src/index.ts --bundle --format=esm --minify --target=es2022 --outfile=dist/onepass-webgpu.js",
+    "typecheck": "tsc --noEmit -p ."
+  },
+  "devDependencies": {
+    "@webgpu/types": "0.1.64",
+    "esbuild": "0.25.10",
+    "onnxruntime-web": "1.30.0",
+    "typescript": "5.9.2"
+  }
+}
