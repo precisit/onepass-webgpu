@@ -1,0 +1,157 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>onepass-webgpu: perfect solver vs one-pass model, full games</title>
+<pre id="log"></pre>
+<script type="module">
+// A separate measurement (not SPEED-PROTOCOL): the "ideal AI", a perfect Connect Four solver
+// (connect-four-ai, MIT, its official WebAssembly build with the built-in opening book), plays full games against
+// itself in the browser; every move is timed. Then the one-pass model scores exactly the same positions on each
+// engine. Query: games=200&opening=2&seed=2026&budget=75 (minutes for the games; stops starting new games after it)
+//   solver=<url of connect_four_ai_wasm.js>  data=<dir with plan.json and the model files>
+const q = new URLSearchParams(location.search);
+const GAMES = Number(q.get("games") ?? 200);
+const OPENING = Number(q.get("opening") ?? 2);
+const SEED = Number(q.get("seed") ?? 2026);
+const BUDGET_MS = Number(q.get("budget") ?? 75) * 60_000;
+const SOLVER = q.get("solver") ?? "../work/connect-four-ai-wasm/connect_four_ai_wasm.js";
+const data = q.get("data") ?? "../work/c4-v2/";
+const log = (s) => { document.getElementById("log").textContent += s + "\n"; };
+const now = () => performance.now();
+
+function mulberry32(a) {
+  return () => {
+    a |= 0; a = (a + 0x6d2b79f5) | 0;
+    let t = Math.imul(a ^ (a >>> 15), 1 | a);
+    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+
+const stats = (a) => {
+  if (!a.length) return null;
+  const s = a.slice().sort((x, y) => x - y);
+  const pick = (p) => s[Math.min(s.length - 1, Math.floor(p * s.length))];
+  return { n: a.length, median: s[(s.length - 1) >> 1], mean: a.reduce((x, y) => x + y, 0) / a.length,
+           p95: pick(0.95), p99: pick(0.99), max: s[s.length - 1] };
+};
+
+// the v2 encoder from a move list (0-indexed columns): the mover's perspective, bottom row first
+function encodeMoves(moves) {
+  const grid = Array.from({ length: 6 }, () => Array(7).fill(0));
+  const heights = Array(7).fill(0);
+  moves.forEach((c, i) => { grid[heights[c]][c] = 1 + (i % 2); heights[c] += 1; });
+  const toMove = 1 + (moves.length % 2);
+  let text = `${moves.length % 2 === 0 ? "1" : "2"}:`;
+  for (let r = 0; r < 6; r += 1) for (let c = 0; c < 7; c += 1) {
+    const v = grid[r][c];
+    text += v === 0 ? "." : v === toMove ? "m" : "t";
+  }
+  const ctx = new Int32Array(44), opt = new Int32Array(56), mask = new Int32Array(7);
+  for (let j = 0; j < 44; j += 1) ctx[j] = text.charCodeAt(j) + 1;
+  let slot = 0;
+  for (let c = 0; c < 7; c += 1) {
+    if (heights[c] >= 6) continue;
+    const o = `column ${c + 1}`;
+    for (let j = 0; j < 8; j += 1) opt[slot * 8 + j] = o.charCodeAt(j) + 1;
+    mask[slot] = 1;
+    slot += 1;
+  }
+  return { ctx, opt, mask };
+}
+
+async function main() {
+  const result = { what: "perfect solver (connect-four-ai WebAssembly, getAllMoveScores) in full self-play games, then the one-pass model on the same positions",
+                   userAgent: navigator.userAgent, games_requested: GAMES, opening_random_moves: OPENING, seed: SEED };
+  // ---- the solver
+  const mod = await import(SOLVER);
+  await mod.default();
+  const solver = new mod.Solver();
+  const rnd = mulberry32(SEED);
+  const decisions = [];
+  const t0 = now();
+  let games = 0, wins1 = 0, wins2 = 0, draws = 0;
+  for (let g = 0; g < GAMES && now() - t0 < BUDGET_MS; g += 1) {
+    solver.reset(); // warm cache within a game (as when playing), cold at the start of each game
+    const pos = new mod.Position();
+    const moves = [];
+    let over = false;
+    while (!over) {
+      const legal = [0, 1, 2, 3, 4, 5, 6].filter((c) => pos.isPlayable(c));
+      if (!legal.length) { draws += 1; break; }
+      let col;
+      if (moves.length < OPENING) {
+        col = legal[Math.floor(rnd() * legal.length)];
+      } else {
+        const t = now();
+        const scores = solver.getAllMoveScores(pos);
+        const ms = now() - t;
+        const best = Math.max(...legal.map((c) => scores[c]));
+        const tied = legal.filter((c) => scores[c] === best);
+        col = tied[Math.floor(rnd() * tied.length)];
+        decisions.push({ moves: moves.slice(), ply: moves.length, ms, explored: solver.explored_positions, best: tied });
+      }
+      if (pos.isWinningMove(col)) { (moves.length % 2 === 0 ? (wins1 += 1) : (wins2 += 1)); over = true; }
+      pos.play(col);
+      moves.push(col);
+      if (!over && moves.length === 42) { draws += 1; over = true; }
+    }
+    games += 1;
+    if (g % 10 === 0) log(`game ${g}: ${decisions.length} decisions, ${((now() - t0) / 60000).toFixed(1)} min`);
+  }
+  result.games_played = games;
+  result.solver_wall_min = (now() - t0) / 60000;
+  result.outcomes = { first_player_wins: wins1, second_player_wins: wins2, draws };
+  const bands = [[0, 8], [9, 12], [13, 16], [17, 20], [21, 28], [29, 41]];
+  result.solver = { per_move_ms: stats(decisions.map((d) => d.ms)),
+    by_ply: Object.fromEntries(bands.map(([a, b]) => [`${a}-${b}`, stats(decisions.filter((d) => d.ply >= a && d.ply <= b).map((d) => d.ms))])),
+    explored_positions: stats(decisions.map((d) => d.explored)) };
+
+  // ---- the one-pass model on exactly those positions
+  const inputs = decisions.map((d) => encodeMoves(d.moves));
+  const [{ Engine }, plan, plan8, f32, int8] = await Promise.all([
+    import("../dist/onepass-webgpu.js"),
+    fetch(data + "plan.json").then((r) => r.json()),
+    fetch(data + "../c4-v2-int8/plan.json").then((r) => r.json()),
+    fetch(data + "onepass-c4-v2.onnx").then((r) => r.arrayBuffer()),
+    fetch(data + "onepass-c4-v2-int8.onnx").then((r) => r.arrayBuffer()),
+  ]);
+  const ort = await import("../node_modules/onnxruntime-web/dist/ort.wasm.min.mjs");
+  ort.env.wasm.wasmPaths = new URL("../node_modules/onnxruntime-web/dist/", location.href).href;
+  const gpu = await Engine.load(plan, f32, { precision: "f32" });
+  const gpu8 = await Engine.load(plan8, int8, { precision: "f32" });
+  const session = await ort.InferenceSession.create(new Uint8Array(int8), { executionProviders: ["wasm"] });
+  result.adapter = { vendor: gpu.adapterInfo.vendor, architecture: gpu.adapterInfo.architecture };
+  const engines = {
+    "onepass-webgpu f32": (x) => gpu.score(x.ctx, x.opt, x.mask),
+    "onepass-webgpu int8": (x) => gpu8.score(x.ctx, x.opt, x.mask),
+    "onnxruntime-web wasm int8": async (x) => (await session.run({
+      context_ids: new ort.Tensor("int32", x.ctx, [1, 44]), option_ids: new ort.Tensor("int32", x.opt, [1, 7, 8]),
+      option_mask: new ort.Tensor("int32", x.mask, [1, 7]) }))[session.outputNames[0]].data,
+  };
+  result.model = {};
+  for (const [name, score] of Object.entries(engines)) {
+    for (let i = 0; i < Math.min(20, inputs.length); i += 1) await score(inputs[i]);   // warm-up
+    const times = [];
+    for (const x of inputs) { const t = now(); await score(x); times.push(now() - t); }
+    result.model[name] = stats(times);
+  }
+  // how often the model's choice is one the solver rates best, on the same positions
+  let agree = 0;
+  for (let i = 0; i < inputs.length; i += 1) {
+    const out = await gpu.score(inputs[i].ctx, inputs[i].opt, inputs[i].mask);
+    const heights = Array(7).fill(0);
+    decisions[i].moves.forEach((c) => { heights[c] += 1; });
+    const legalCols = [0, 1, 2, 3, 4, 5, 6].filter((c) => heights[c] < 6);
+    let best = 0;
+    for (let k = 1; k < legalCols.length; k += 1) if (out[k] > out[best]) best = k;
+    agree += decisions[i].best.includes(legalCols[best]) ? 1 : 0;
+  }
+  result.model_picks_a_best_move = agree / Math.max(1, inputs.length);
+  result.decisions = decisions.length;
+  result.sample = decisions.slice(0, 3).map((d) => ({ ply: d.ply, ms: d.ms }));
+  return result;
+}
+
+main().then((r) => { window.__result = r; log(JSON.stringify(r, null, 1)); })
+  .catch((e) => { window.__result = { error: String(e?.stack ?? e) }; log(String(e?.stack ?? e)); });
+</script>
