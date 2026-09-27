@@ -64,6 +64,28 @@ conditions. Record:
 - onnxruntime-web ran single-threaded, as on a page without cross-origin isolation (for example GitHub Pages).
 - The fp32 download (29.7 MB) is the price of A1; the int8 file (7.8 MB) now loads directly, see below.
 
+### The perfect solver in the same browser, for comparison
+
+A separate measurement (not the speed protocol): `bench/solver-games.html` plays 200 full games of perfect play
+in the browser with [connect-four-ai](https://github.com/benjaminrall/connect-four-ai)'s WebAssembly build (MIT,
+with its built-in opening book; two random opening moves per game so that games differ), timing every solver move
+(`getAllMoveScores`, cache warm within a game). The one-pass engines then score exactly the same 7 652 positions.
+Idle Apple M5 Pro, Chrome 154. Record:
+[`bench/results/2026-09-27-M5Pro-chrome-solver-games.json`](bench/results/2026-09-27-M5Pro-chrome-solver-games.json).
+
+| per move, same 7 652 positions | median | mean | p95 | p99 | worst |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| perfect solver, WebAssembly (1.3 MB download) | < 0.1 ms | 40 ms | 168 ms | 1.0 s | 6.9 s |
+| onepass-webgpu, f32 | 1.2 ms | 1.25 ms | 1.4 ms | 1.4 ms | 2.2 ms |
+| onepass-webgpu, int8 | 1.0 ms | 0.96 ms | 1.1 ms | 1.1 ms | 1.3 ms |
+| onnxruntime-web wasm, int8 | 13.1 ms | 13.1 ms | 13.2 ms | 13.2 ms | 13.7 ms |
+
+- The solver is instant for most moves (the opening book, and late positions with few moves left) and slow right
+  after the book: moves 9 to 12 take 59 ms median and up to 3.7 s; the positions just before them up to 6.9 s.
+- The model's time does not depend on the position: about 1 ms, every move.
+- On these perfect-play positions the model picks a move the solver rates best (fastest win, or slowest loss)
+  91.7 % of the time.
+
 ### int8 file, weights only
 
 `compile_onepass.py` also reads files quantized by ONNX Runtime's dynamic quantization (`MatMulInteger`,

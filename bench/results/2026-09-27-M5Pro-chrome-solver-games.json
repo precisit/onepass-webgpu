@@ -1,0 +1,122 @@
+{
+ "what": "perfect solver (connect-four-ai WebAssembly, getAllMoveScores) in full self-play games, then the one-pass model on the same positions",
+ "userAgent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) HeadlessChrome/154.0.0.0 Safari/537.36",
+ "games_requested": 200,
+ "opening_random_moves": 2,
+ "seed": 2026,
+ "games_played": 200,
+ "solver_wall_min": 5.148413333333532,
+ "outcomes": {
+  "first_player_wins": 108,
+  "second_player_wins": 42,
+  "draws": 50
+ },
+ "solver": {
+  "per_move_ms": {
+   "n": 7652,
+   "median": 0,
+   "mean": 40.36548614740699,
+   "p95": 167.7000000178814,
+   "p99": 1044.5,
+   "max": 6923
+  },
+  "by_ply": {
+   "0-8": {
+    "n": 1400,
+    "median": 0,
+    "mean": 136.0937142858335,
+    "p95": 1048.0999999940395,
+    "p99": 1954.9000000059605,
+    "max": 6923
+   },
+   "9-12": {
+    "n": 800,
+    "median": 58.599999994039536,
+    "mean": 136.89949999976903,
+    "p95": 567.3000000119209,
+    "p99": 1020.5999999940395,
+    "max": 3728
+   },
+   "13-16": {
+    "n": 800,
+    "median": 3.800000011920929,
+    "mean": 9.755625000260771,
+    "p95": 39,
+    "p99": 89.2999999821186,
+    "max": 236.5
+   },
+   "17-20": {
+    "n": 800,
+    "median": 0.4000000059604645,
+    "mean": 1.1148749996721745,
+    "p95": 5.0999999940395355,
+    "p99": 11.199999988079071,
+    "max": 20.400000005960464
+   },
+   "21-28": {
+    "n": 1600,
+    "median": 0,
+    "mean": 0.07812500003725291,
+    "p95": 0.30000001192092896,
+    "p99": 0.9000000059604645,
+    "max": 2.5999999940395355
+   },
+   "29-41": {
+    "n": 2252,
+    "median": 0,
+    "mean": 0.001998223787832006,
+    "p95": 0,
+    "p99": 0.09999999403953552,
+    "max": 0.10000002384185791
+   }
+  },
+  "explored_positions": {
+   "n": 7652,
+   "median": 29,
+   "mean": 171995.1148719289,
+   "p95": 685742,
+   "p99": 3841447,
+   "max": 39636286
+  }
+ },
+ "adapter": {
+  "vendor": "apple",
+  "architecture": "metal-3"
+ },
+ "model": {
+  "onepass-webgpu f32": {
+   "n": 7652,
+   "median": 1.2000000178813934,
+   "mean": 1.2508494511316786,
+   "p95": 1.4000000059604645,
+   "p99": 1.4000000059604645,
+   "max": 2.2000000178813934
+  },
+  "onepass-webgpu int8": {
+   "n": 7652,
+   "median": 1,
+   "mean": 0.9576711970679871,
+   "p95": 1.0999999940395355,
+   "p99": 1.100000023841858,
+   "max": 1.300000011920929
+  },
+  "onnxruntime-web wasm int8": {
+   "n": 7652,
+   "median": 13.099999994039536,
+   "mean": 13.058115525347397,
+   "p95": 13.199999988079071,
+   "p99": 13.200000017881393,
+   "max": 13.700000017881393
+  }
+ },
+ "model_picks_a_best_move": 0.917276529012023,
+ "decisions": 7652,
+ "machine": {
+  "chip": "Apple M5 Pro",
+  "gpu_cores": 20,
+  "browser": "Chrome 154 (headless=new)",
+  "load": "idle (load average about 1-3)"
+ },
+ "solver_package": "connect-four-ai-wasm 1.0.0 (npm, MIT, connect-four-ai by Benjamin Rall), built-in opening book",
+ "runtime_commit": "94c8af9"
+}
