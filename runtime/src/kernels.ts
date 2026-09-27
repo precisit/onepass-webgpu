@@ -60,6 +60,8 @@ export interface MatmulVariant {
   w8?: "int8" | "uint8";
   /** A plugin weight format: its WGSL defines w4(k, n4) (see WeightFormat in index.ts). */
   plugin?: string;
+  /** The plugin's WGSL also defines inner(k0, n4, &acc): the whole K-split loop. */
+  pluginInner?: boolean;
 }
 
 // four 8-bit weights of one u32 (little-endian: columns n..n+3) as floats
@@ -114,8 +116,9 @@ ${v.aSplits === 0 ? "      a = A[m * p.K + k];" : `      for (var j = 0u; j < ${
   if (n4 * 4u >= p.N) { return; }
   let stride = p.N / 4u;
   var acc: array<vec4<f32>, RM>;
+  ${v.pluginInner ? "inner(k0, n4, &acc);" : ""}
   ${v.plugin ? "" : `var wi = ${v.w8 ? "p.wOff" : "p.wOff / 4u"} + k0 * stride + n4;`}
-  for (var kk = 0u; kk < KS; kk += 1u) {
+  for (var kk = 0u; kk < ${v.pluginInner ? "0u" : "KS"}; kk += 1u) {
     ${v.plugin ? "let w = w4(k0 + kk, n4);" : `let w = ${v.w8 ? "unpack8(Q[wi]) - vec4<f32>(p.zp)" : "vec4<f32>(W[wi])"};
     wi += stride;`}
     for (var r = 0u; r < RM; r += 1u) { acc[r] = fma(vec4<f32>(at[r * KS + kk]), w, acc[r]); }

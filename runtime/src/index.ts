@@ -54,11 +54,18 @@ export interface PlanTensor {
  *     fn w4(k: u32, n4: u32) -> vec4<f32>     // W[k, 4 n4 .. 4 n4 + 3]
  *
  * and may use qbyte(i) (byte i of this tensor's packed bytes), fval(i) (float i of its side data) and the
- * uniforms p.K, p.N, p.x0, p.x1 (the two parameters from pack).
+ * uniforms p.K, p.N, p.x0, p.x1 (the two parameters from pack). A format that sets `inner` also defines
+ *
+ *     fn inner(k0: u32, n4: u32, acc: ptr<function, array<vec4<f32>, RM>>)
+ *
+ * which runs the whole K-split loop itself: for kk < KS, acc[r] += at[r * KS + kk] * W[k0 + kk, columns], where
+ * `at` is the kernel's workgroup tile of activations, RM rows by KS. This lets a format decode each byte or record
+ * once instead of once per weight.
  */
 export interface WeightFormat {
   kind: string;
   wgsl: string;
+  inner?: boolean;
   pack(t: PlanTensor, inits: Map<string, Initializer>): { bytes: Uint8Array; floats?: Float32Array; params?: [number, number] };
 }
 
@@ -426,7 +433,7 @@ export class Engine {
       const { S, RM } = splits(M, Kin, N, target);
       const q = this.packed.get(w);
       if (q?.format) {
-        const v: K.MatmulVariant = { RM, KS: Kin / S, aSplits, aRelu, plugin: q.format.kind };
+        const v: K.MatmulVariant = { RM, KS: Kin / S, aSplits, aRelu, plugin: q.format.kind, pluginInner: !!q.format.inner };
         const pipe = this.pipeline(`mm${f16}${JSON.stringify(v)}`, () => K.matmul(f16, v, q.format!.wgsl));
         add(pipe, [M, N, Kin, q.offsetBytes!, aBias ? this.off(aBias) : 0, q.floatOffset!, ...q.params!], {},
           [b.weights8, a, out, b.weights], [Math.ceil(N / 256), Math.ceil(M / RM), S]);
