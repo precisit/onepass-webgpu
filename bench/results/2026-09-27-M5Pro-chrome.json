@@ -1,0 +1,1180 @@
+{
+ "commit": "94c8af9",
+ "protocol_sha256": "43492eb4a944bb542e4f0baed52a0bd8c658b1ba49554c06adc6570ecf40c61e",
+ "time_utc": "2026-09-27T06:02:15+00:00",
+ "machine": {
+  "model": "Mac17,16",
+  "chip": "Apple M5 Pro",
+  "gpu_cores": "20",
+  "os": "macOS-27.0-arm64-arm-64bit",
+  "power": "'AC Power'"
+ },
+ "runtime_bundle": {
+  "bytes": 37464,
+  "gzip_bytes": 11892,
+  "sha256": "682241c5964eca0e3a9cf595ffc7c07bdabbcc2b41996c88a7ef9886bef9bca2"
+ },
+ "models": {
+  "onepass-c4-v2.onnx": {
+   "bytes": 29719176,
+   "sha256": "532c63f0d34c2d8c45bc0c424605567bf0cecc7c9a87f01b9b055c86b82d0638"
+  },
+  "onepass-c4-v2-int8.onnx": {
+   "bytes": 7816833,
+   "sha256": "015523d297c8e4cce067428f3dbef0847d51d9008adbf7eeca8e35948d93e4a9"
+  }
+ },
+ "backends": {
+  "onepass-f32": {
+   "runs": [
+    {
+     "backend": "onepass",
+     "precision": "f32",
+     "userAgent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) HeadlessChrome/154.0.0.0 Safari/537.36",
+     "crossOriginIsolated": false,
+     "selection": {
+      "seed": 20260927,
+      "warm": 20,
+      "timed": 500
+     },
+     "model": {
+      "file": "onepass-c4-v2.onnx",
+      "bytes": 29719176
+     },
+     "adapter": {
+      "vendor": "apple",
+      "architecture": "metal-3",
+      "device": "",
+      "description": ""
+     },
+     "dispatches": 70,
+     "cold": {
+      "fetch_ms": 18.299999982118607,
+      "setup_ms": 231.5,
+      "first_decision_ms": 7.300000011920929,
+      "total_ms": 257.09999999403954
+     },
+     "check": {
+      "positions": 50,
+      "agree": 50,
+      "required": 50,
+      "pass": true
+     },
+     "warm": {
+      "median": 1.2999999821186066,
+      "p95": 1.399999976158142,
+      "mean": 1.2512000000476837,
+      "n": 500
+     },
+     "batched": {
+      "8": {
+       "per_call": {
+        "median": 4.0999999940395355,
+        "p95": 4.199999988079071,
+        "mean": 4.042857142857143,
+        "n": 35
+       },
+       "per_position_median_ms": 0.5124999992549419
+      },
+      "64": {
+       "per_call": {
+        "median": 20.400000005960464,
+        "p95": 20.600000023841858,
+        "mean": 20.422857143197742,
+        "n": 35
+       },
+       "per_position_median_ms": 0.31875000009313226
+      }
+     },
+     "gpu_time": {
+      "median": 0.917504,
+      "p95": 0.98304,
+      "mean": 0.9483059199999991,
+      "n": 200
+     },
+     "runtime_files": [
+      {
+       "file": "onepass-webgpu.js",
+       "bytes": 37464
+      }
+     ],
+     "loadavg_before": [
+      0.8515625,
+      0.9892578125,
+      1.01611328125
+     ],
+     "loadavg_after": [
+      0.8515625,
+      0.9892578125,
+      1.01611328125
+     ]
+    },
+    {
+     "backend": "onepass",
+     "precision": "f32",
+     "userAgent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) HeadlessChrome/154.0.0.0 Safari/537.36",
+     "crossOriginIsolated": false,
+     "selection": {
+      "seed": 20260927,
+      "warm": 20,
+      "timed": 500
+     },
+     "model": {
+      "file": "onepass-c4-v2.onnx",
+      "bytes": 29719176
+     },
+     "adapter": {
+      "vendor": "apple",
+      "architecture": "metal-3",
+      "device": "",
+      "description": ""
+     },
+     "dispatches": 70,
+     "cold": {
+      "fetch_ms": 18.400000005960464,
+      "setup_ms": 20.69999998807907,
+      "first_decision_ms": 5.200000017881393,
+      "total_ms": 44.30000001192093
+     },
+     "check": {
+      "positions": 50,
+      "agree": 50,
+      "required": 50,
+      "pass": true
+     },
+     "warm": {
+      "median": 1.2999999821186066,
+      "p95": 1.4000000059604645,
+      "mean": 1.2514000000357628,
+      "n": 500
+     },
+     "batched": {
+      "8": {
+       "per_call": {
+        "median": 4,
+        "p95": 4.199999988079071,
+        "mean": 4.03714285663196,
+        "n": 35
+       },
+       "per_position_median_ms": 0.5
+      },
+      "64": {
+       "per_call": {
+        "median": 20.30000001192093,
+        "p95": 20.400000005960464,
+        "mean": 20.32285714319774,
+        "n": 35
+       },
+       "per_position_median_ms": 0.3171875001862645
+      }
+     },
+     "gpu_time": {
+      "median": 0.917504,
+      "p95": 0.98304,
+      "mean": 0.9502719999999987,
+      "n": 200
+     },
+     "runtime_files": [
+      {
+       "file": "onepass-webgpu.js",
+       "bytes": 37464
+      }
+     ],
+     "loadavg_before": [
+      0.8515625,
+      0.9892578125,
+      1.01611328125
+     ],
+     "loadavg_after": [
+      1.0234375,
+      1.0224609375,
+      1.02734375
+     ]
+    },
+    {
+     "backend": "onepass",
+     "precision": "f32",
+     "userAgent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) HeadlessChrome/154.0.0.0 Safari/537.36",
+     "crossOriginIsolated": false,
+     "selection": {
+      "seed": 20260927,
+      "warm": 20,
+      "timed": 500
+     },
+     "model": {
+      "file": "onepass-c4-v2.onnx",
+      "bytes": 29719176
+     },
+     "adapter": {
+      "vendor": "apple",
+      "architecture": "metal-3",
+      "device": "",
+      "description": ""
+     },
+     "dispatches": 70,
+     "cold": {
+      "fetch_ms": 19.200000017881393,
+      "setup_ms": 22.599999994039536,
+      "first_decision_ms": 2.699999988079071,
+      "total_ms": 44.5
+     },
+     "check": {
+      "positions": 50,
+      "agree": 50,
+      "required": 50,
+      "pass": true
+     },
+     "warm": {
+      "median": 1.2000000178813934,
+      "p95": 1.4000000059604645,
+      "mean": 1.248,
+      "n": 500
+     },
+     "batched": {
+      "8": {
+       "per_call": {
+        "median": 4,
+        "p95": 4.199999988079071,
+        "mean": 4.042857142857143,
+        "n": 35
+       },
+       "per_position_median_ms": 0.5
+      },
+      "64": {
+       "per_call": {
+        "median": 20.30000001192093,
+        "p95": 20.599999994039536,
+        "mean": 20.362857142516546,
+        "n": 35
+       },
+       "per_position_median_ms": 0.3171875001862645
+      }
+     },
+     "gpu_time": {
+      "median": 0.98304,
+      "p95": 0.98304,
+      "mean": 0.9542041599999983,
+      "n": 200
+     },
+     "runtime_files": [
+      {
+       "file": "onepass-webgpu.js",
+       "bytes": 37464
+      }
+     ],
+     "loadavg_before": [
+      1.0234375,
+      1.0224609375,
+      1.02734375
+     ],
+     "loadavg_after": [
+      1.0234375,
+      1.0224609375,
+      1.02734375
+     ]
+    }
+   ],
+   "median_of_medians_ms": 1.2999999821186066,
+   "median_of_p95_ms": 1.4000000059604645,
+   "median_of_means_ms": 1.2512000000476837,
+   "cold_total_ms_median": 44.5
+  },
+  "onepass-f16": {
+   "runs": [
+    {
+     "backend": "onepass",
+     "precision": "f16",
+     "userAgent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) HeadlessChrome/154.0.0.0 Safari/537.36",
+     "crossOriginIsolated": false,
+     "selection": {
+      "seed": 20260927,
+      "warm": 20,
+      "timed": 500
+     },
+     "model": {
+      "file": "onepass-c4-v2.onnx",
+      "bytes": 29719176
+     },
+     "adapter": {
+      "vendor": "apple",
+      "architecture": "metal-3",
+      "device": "",
+      "description": ""
+     },
+     "dispatches": 70,
+     "cold": {
+      "fetch_ms": 18.099999994039536,
+      "setup_ms": 175.09999999403954,
+      "first_decision_ms": 8.300000011920929,
+      "total_ms": 201.5
+     },
+     "check": {
+      "positions": 50,
+      "agree": 50,
+      "required": 48,
+      "pass": true
+     },
+     "warm": {
+      "median": 0.9000000059604645,
+      "p95": 1.0999999940395355,
+      "mean": 0.933800000011921,
+      "n": 500
+     },
+     "batched": {
+      "8": {
+       "per_call": {
+        "median": 2.800000011920929,
+        "p95": 3.2999999821186066,
+        "mean": 2.8742857141154152,
+        "n": 35
+       },
+       "per_position_median_ms": 0.3500000014901161
+      },
+      "64": {
+       "per_call": {
+        "median": 15.199999988079071,
+        "p95": 15.300000011920929,
+        "mean": 15.271428571428572,
+        "n": 35
+       },
+       "per_position_median_ms": 0.23749999981373549
+      }
+     },
+     "gpu_time": {
+      "median": 0.589824,
+      "p95": 0.65536,
+      "mean": 0.6140723199999982,
+      "n": 200
+     },
+     "runtime_files": [
+      {
+       "file": "onepass-webgpu.js",
+       "bytes": 37464
+      }
+     ],
+     "loadavg_before": [
+      1.0234375,
+      1.0224609375,
+      1.02734375
+     ],
+     "loadavg_after": [
+      0.94140625,
+      1.00537109375,
+      1.02099609375
+     ]
+    },
+    {
+     "backend": "onepass",
+     "precision": "f16",
+     "userAgent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) HeadlessChrome/154.0.0.0 Safari/537.36",
+     "crossOriginIsolated": false,
+     "selection": {
+      "seed": 20260927,
+      "warm": 20,
+      "timed": 500
+     },
+     "model": {
+      "file": "onepass-c4-v2.onnx",
+      "bytes": 29719176
+     },
+     "adapter": {
+      "vendor": "apple",
+      "architecture": "metal-3",
+      "device": "",
+      "description": ""
+     },
+     "dispatches": 70,
+     "cold": {
+      "fetch_ms": 19.200000017881393,
+      "setup_ms": 24,
+      "first_decision_ms": 4.5,
+      "total_ms": 47.70000001788139
+     },
+     "check": {
+      "positions": 50,
+      "agree": 50,
+      "required": 48,
+      "pass": true
+     },
+     "warm": {
+      "median": 0.9000000059604645,
+      "p95": 1.0999999940395355,
+      "mean": 0.9353999999761582,
+      "n": 500
+     },
+     "batched": {
+      "8": {
+       "per_call": {
+        "median": 2.800000011920929,
+        "p95": 3,
+        "mean": 2.8485714282308305,
+        "n": 35
+       },
+       "per_position_median_ms": 0.3500000014901161
+      },
+      "64": {
+       "per_call": {
+        "median": 15.199999988079071,
+        "p95": 15.300000011920929,
+        "mean": 15.177142857653754,
+        "n": 35
+       },
+       "per_position_median_ms": 0.23749999981373549
+      }
+     },
+     "gpu_time": {
+      "median": 0.589824,
+      "p95": 0.65536,
+      "mean": 0.6085017599999979,
+      "n": 200
+     },
+     "runtime_files": [
+      {
+       "file": "onepass-webgpu.js",
+       "bytes": 37464
+      }
+     ],
+     "loadavg_before": [
+      0.94140625,
+      1.00537109375,
+      1.02099609375
+     ],
+     "loadavg_after": [
+      0.94140625,
+      1.00537109375,
+      1.02099609375
+     ]
+    },
+    {
+     "backend": "onepass",
+     "precision": "f16",
+     "userAgent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) HeadlessChrome/154.0.0.0 Safari/537.36",
+     "crossOriginIsolated": false,
+     "selection": {
+      "seed": 20260927,
+      "warm": 20,
+      "timed": 500
+     },
+     "model": {
+      "file": "onepass-c4-v2.onnx",
+      "bytes": 29719176
+     },
+     "adapter": {
+      "vendor": "apple",
+      "architecture": "metal-3",
+      "device": "",
+      "description": ""
+     },
+     "dispatches": 70,
+     "cold": {
+      "fetch_ms": 18.099999994039536,
+      "setup_ms": 25.80000001192093,
+      "first_decision_ms": 3.5,
+      "total_ms": 47.400000005960464
+     },
+     "check": {
+      "positions": 50,
+      "agree": 50,
+      "required": 48,
+      "pass": true
+     },
+     "warm": {
+      "median": 0.9000000059604645,
+      "p95": 1,
+      "mean": 0.9295999999642373,
+      "n": 500
+     },
+     "batched": {
+      "8": {
+       "per_call": {
+        "median": 2.800000011920929,
+        "p95": 3,
+        "mean": 2.842857142857143,
+        "n": 35
+       },
+       "per_position_median_ms": 0.3500000014901161
+      },
+      "64": {
+       "per_call": {
+        "median": 15.199999988079071,
+        "p95": 15.699999988079071,
+        "mean": 15.222857143197741,
+        "n": 35
+       },
+       "per_position_median_ms": 0.23749999981373549
+      }
+     },
+     "gpu_time": {
+      "median": 0.589824,
+      "p95": 0.65536,
+      "mean": 0.6091571199999978,
+      "n": 200
+     },
+     "runtime_files": [
+      {
+       "file": "onepass-webgpu.js",
+       "bytes": 37464
+      }
+     ],
+     "loadavg_before": [
+      0.94140625,
+      1.00537109375,
+      1.02099609375
+     ],
+     "loadavg_after": [
+      0.94140625,
+      1.00537109375,
+      1.02099609375
+     ]
+    }
+   ],
+   "median_of_medians_ms": 0.9000000059604645,
+   "median_of_p95_ms": 1.0999999940395355,
+   "median_of_means_ms": 0.933800000011921,
+   "cold_total_ms_median": 47.70000001788139
+  },
+  "onepass-int8": {
+   "runs": [
+    {
+     "backend": "onepass",
+     "precision": "int8 weights, f32",
+     "userAgent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) HeadlessChrome/154.0.0.0 Safari/537.36",
+     "crossOriginIsolated": false,
+     "selection": {
+      "seed": 20260927,
+      "warm": 20,
+      "timed": 500
+     },
+     "model": {
+      "file": "onepass-c4-v2-int8.onnx",
+      "bytes": 7816833
+     },
+     "adapter": {
+      "vendor": "apple",
+      "architecture": "metal-3",
+      "device": "",
+      "description": ""
+     },
+     "dispatches": 70,
+     "cold": {
+      "fetch_ms": 12,
+      "setup_ms": 104.89999997615814,
+      "first_decision_ms": 6.9000000059604645,
+      "total_ms": 123.7999999821186
+     },
+     "check": {
+      "positions": 50,
+      "agree": 49,
+      "required": 48,
+      "pass": true
+     },
+     "warm": {
+      "median": 1,
+      "p95": 1.0999999940395355,
+      "mean": 0.9578000000119209,
+      "n": 500
+     },
+     "batched": {
+      "8": {
+       "per_call": {
+        "median": 3.199999988079071,
+        "p95": 3.300000011920929,
+        "mean": 3.2057142853736877,
+        "n": 35
+       },
+       "per_position_median_ms": 0.3999999985098839
+      },
+      "64": {
+       "per_call": {
+        "median": 18.200000017881393,
+        "p95": 18.5,
+        "mean": 18.274285714115415,
+        "n": 35
+       },
+       "per_position_median_ms": 0.2843750002793968
+      }
+     },
+     "gpu_time": {
+      "median": 0.65536,
+      "p95": 0.65536,
+      "mean": 0.6409420800000002,
+      "n": 200
+     },
+     "runtime_files": [
+      {
+       "file": "onepass-webgpu.js",
+       "bytes": 37464
+      }
+     ],
+     "loadavg_before": [
+      0.94140625,
+      1.00537109375,
+      1.02099609375
+     ],
+     "loadavg_after": [
+      1.10595703125,
+      1.0380859375,
+      1.0322265625
+     ]
+    },
+    {
+     "backend": "onepass",
+     "precision": "int8 weights, f32",
+     "userAgent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) HeadlessChrome/154.0.0.0 Safari/537.36",
+     "crossOriginIsolated": false,
+     "selection": {
+      "seed": 20260927,
+      "warm": 20,
+      "timed": 500
+     },
+     "model": {
+      "file": "onepass-c4-v2-int8.onnx",
+      "bytes": 7816833
+     },
+     "adapter": {
+      "vendor": "apple",
+      "architecture": "metal-3",
+      "device": "",
+      "description": ""
+     },
+     "dispatches": 70,
+     "cold": {
+      "fetch_ms": 12.200000017881393,
+      "setup_ms": 19.599999994039536,
+      "first_decision_ms": 3.0999999940395355,
+      "total_ms": 34.900000005960464
+     },
+     "check": {
+      "positions": 50,
+      "agree": 49,
+      "required": 48,
+      "pass": true
+     },
+     "warm": {
+      "median": 1,
+      "p95": 1.0999999940395355,
+      "mean": 0.956,
+      "n": 500
+     },
+     "batched": {
+      "8": {
+       "per_call": {
+        "median": 3.199999988079071,
+        "p95": 3.4000000059604645,
+        "mean": 3.194285714626312,
+        "n": 35
+       },
+       "per_position_median_ms": 0.3999999985098839
+      },
+      "64": {
+       "per_call": {
+        "median": 18.200000017881393,
+        "p95": 18.400000005960464,
+        "mean": 18.262857142516545,
+        "n": 35
+       },
+       "per_position_median_ms": 0.2843750002793968
+      }
+     },
+     "gpu_time": {
+      "median": 0.65536,
+      "p95": 0.65536,
+      "mean": 0.6376652800000001,
+      "n": 200
+     },
+     "runtime_files": [
+      {
+       "file": "onepass-webgpu.js",
+       "bytes": 37464
+      }
+     ],
+     "loadavg_before": [
+      1.10595703125,
+      1.0380859375,
+      1.0322265625
+     ],
+     "loadavg_after": [
+      1.10595703125,
+      1.0380859375,
+      1.0322265625
+     ]
+    },
+    {
+     "backend": "onepass",
+     "precision": "int8 weights, f32",
+     "userAgent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) HeadlessChrome/154.0.0.0 Safari/537.36",
+     "crossOriginIsolated": false,
+     "selection": {
+      "seed": 20260927,
+      "warm": 20,
+      "timed": 500
+     },
+     "model": {
+      "file": "onepass-c4-v2-int8.onnx",
+      "bytes": 7816833
+     },
+     "adapter": {
+      "vendor": "apple",
+      "architecture": "metal-3",
+      "device": "",
+      "description": ""
+     },
+     "dispatches": 70,
+     "cold": {
+      "fetch_ms": 12.199999988079071,
+      "setup_ms": 17.30000001192093,
+      "first_decision_ms": 3,
+      "total_ms": 32.5
+     },
+     "check": {
+      "positions": 50,
+      "agree": 49,
+      "required": 48,
+      "pass": true
+     },
+     "warm": {
+      "median": 1,
+      "p95": 1.0999999940395355,
+      "mean": 0.9536000000238418,
+      "n": 500
+     },
+     "batched": {
+      "8": {
+       "per_call": {
+        "median": 3.199999988079071,
+        "p95": 3.4000000059604645,
+        "mean": 3.197142857313156,
+        "n": 35
+       },
+       "per_position_median_ms": 0.3999999985098839
+      },
+      "64": {
+       "per_call": {
+        "median": 18.30000001192093,
+        "p95": 18.400000005960464,
+        "mean": 18.30857142891203,
+        "n": 35
+       },
+       "per_position_median_ms": 0.2859375001862645
+      }
+     },
+     "gpu_time": {
+      "median": 0.65536,
+      "p95": 0.65536,
+      "mean": 0.64028672,
+      "n": 200
+     },
+     "runtime_files": [
+      {
+       "file": "onepass-webgpu.js",
+       "bytes": 37464
+      }
+     ],
+     "loadavg_before": [
+      1.10595703125,
+      1.0380859375,
+      1.0322265625
+     ],
+     "loadavg_after": [
+      1.25732421875,
+      1.0703125,
+      1.04345703125
+     ]
+    }
+   ],
+   "median_of_medians_ms": 1,
+   "median_of_p95_ms": 1.0999999940395355,
+   "median_of_means_ms": 0.956,
+   "cold_total_ms_median": 34.900000005960464
+  },
+  "ort-wasm-int8": {
+   "runs": [
+    {
+     "backend": "ort",
+     "precision": "int8",
+     "userAgent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) HeadlessChrome/154.0.0.0 Safari/537.36",
+     "crossOriginIsolated": false,
+     "selection": {
+      "seed": 20260927,
+      "warm": 20,
+      "timed": 500
+     },
+     "model": {
+      "file": "onepass-c4-v2-int8.onnx",
+      "bytes": 7816833
+     },
+     "ort": {
+      "version": "1.30.0",
+      "numThreads": 1
+     },
+     "cold": {
+      "fetch_ms": 12.199999988079071,
+      "setup_ms": 156,
+      "first_decision_ms": 27.69999998807907,
+      "total_ms": 195.89999997615814
+     },
+     "check": {
+      "positions": 50,
+      "agree": 50,
+      "required": 48,
+      "pass": true
+     },
+     "warm": {
+      "median": 12.699999988079071,
+      "p95": 12.900000005960464,
+      "mean": 12.676399999976159,
+      "n": 500
+     },
+     "batched": "n/a: the ONNX file has a fixed batch of 1",
+     "runtime_files": [
+      {
+       "file": "ort.wasm.min.mjs",
+       "bytes": 50126
+      },
+      {
+       "file": "ort-wasm-simd-threaded.mjs",
+       "bytes": 24381
+      },
+      {
+       "file": "ort-wasm-simd-threaded.wasm",
+       "bytes": 14239897
+      }
+     ],
+     "loadavg_before": [
+      1.25732421875,
+      1.0703125,
+      1.04345703125
+     ],
+     "loadavg_after": [
+      1.31640625,
+      1.08544921875,
+      1.048828125
+     ]
+    },
+    {
+     "backend": "ort",
+     "precision": "int8",
+     "userAgent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) HeadlessChrome/154.0.0.0 Safari/537.36",
+     "crossOriginIsolated": false,
+     "selection": {
+      "seed": 20260927,
+      "warm": 20,
+      "timed": 500
+     },
+     "model": {
+      "file": "onepass-c4-v2-int8.onnx",
+      "bytes": 7816833
+     },
+     "ort": {
+      "version": "1.30.0",
+      "numThreads": 1
+     },
+     "cold": {
+      "fetch_ms": 11.299999982118607,
+      "setup_ms": 151.80000001192093,
+      "first_decision_ms": 27.5,
+      "total_ms": 190.59999999403954
+     },
+     "check": {
+      "positions": 50,
+      "agree": 50,
+      "required": 48,
+      "pass": true
+     },
+     "warm": {
+      "median": 12.699999988079071,
+      "p95": 12.900000005960464,
+      "mean": 12.698400000035763,
+      "n": 500
+     },
+     "batched": "n/a: the ONNX file has a fixed batch of 1",
+     "runtime_files": [
+      {
+       "file": "ort.wasm.min.mjs",
+       "bytes": 50126
+      },
+      {
+       "file": "ort-wasm-simd-threaded.mjs",
+       "bytes": 24381
+      },
+      {
+       "file": "ort-wasm-simd-threaded.wasm",
+       "bytes": 14239897
+      }
+     ],
+     "loadavg_before": [
+      1.31640625,
+      1.08544921875,
+      1.048828125
+     ],
+     "loadavg_after": [
+      1.34130859375,
+      1.0986328125,
+      1.0537109375
+     ]
+    },
+    {
+     "backend": "ort",
+     "precision": "int8",
+     "userAgent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) HeadlessChrome/154.0.0.0 Safari/537.36",
+     "crossOriginIsolated": false,
+     "selection": {
+      "seed": 20260927,
+      "warm": 20,
+      "timed": 500
+     },
+     "model": {
+      "file": "onepass-c4-v2-int8.onnx",
+      "bytes": 7816833
+     },
+     "ort": {
+      "version": "1.30.0",
+      "numThreads": 1
+     },
+     "cold": {
+      "fetch_ms": 11.899999976158142,
+      "setup_ms": 152.10000002384186,
+      "first_decision_ms": 27.5,
+      "total_ms": 191.5
+     },
+     "check": {
+      "positions": 50,
+      "agree": 50,
+      "required": 48,
+      "pass": true
+     },
+     "warm": {
+      "median": 12.699999988079071,
+      "p95": 12.900000005960464,
+      "mean": 12.717,
+      "n": 500
+     },
+     "batched": "n/a: the ONNX file has a fixed batch of 1",
+     "runtime_files": [
+      {
+       "file": "ort.wasm.min.mjs",
+       "bytes": 50126
+      },
+      {
+       "file": "ort-wasm-simd-threaded.mjs",
+       "bytes": 24381
+      },
+      {
+       "file": "ort-wasm-simd-threaded.wasm",
+       "bytes": 14239897
+      }
+     ],
+     "loadavg_before": [
+      1.34130859375,
+      1.0986328125,
+      1.0537109375
+     ],
+     "loadavg_after": [
+      1.31396484375,
+      1.0966796875,
+      1.05322265625
+     ]
+    }
+   ],
+   "median_of_medians_ms": 12.699999988079071,
+   "median_of_p95_ms": 12.900000005960464,
+   "median_of_means_ms": 12.698400000035763,
+   "cold_total_ms_median": 191.5
+  },
+  "ort-wasm-fp32": {
+   "runs": [
+    {
+     "backend": "ort",
+     "precision": "fp32",
+     "userAgent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) HeadlessChrome/154.0.0.0 Safari/537.36",
+     "crossOriginIsolated": false,
+     "selection": {
+      "seed": 20260927,
+      "warm": 20,
+      "timed": 500
+     },
+     "model": {
+      "file": "onepass-c4-v2.onnx",
+      "bytes": 29719176
+     },
+     "ort": {
+      "version": "1.30.0",
+      "numThreads": 1
+     },
+     "cold": {
+      "fetch_ms": 17.19999998807907,
+      "setup_ms": 159.80000001192093,
+      "first_decision_ms": 24.30000001192093,
+      "total_ms": 201.30000001192093
+     },
+     "check": {
+      "positions": 50,
+      "agree": 50,
+      "required": 48,
+      "pass": true
+     },
+     "warm": {
+      "median": 12.100000023841858,
+      "p95": 12.300000011920929,
+      "mean": 12.146399999976158,
+      "n": 500
+     },
+     "batched": "n/a: the ONNX file has a fixed batch of 1",
+     "runtime_files": [
+      {
+       "file": "ort.wasm.min.mjs",
+       "bytes": 50126
+      },
+      {
+       "file": "ort-wasm-simd-threaded.mjs",
+       "bytes": 24381
+      },
+      {
+       "file": "ort-wasm-simd-threaded.wasm",
+       "bytes": 14239897
+      }
+     ],
+     "loadavg_before": [
+      1.31396484375,
+      1.0966796875,
+      1.05322265625
+     ],
+     "loadavg_after": [
+      1.26513671875,
+      1.0927734375,
+      1.05224609375
+     ]
+    },
+    {
+     "backend": "ort",
+     "precision": "fp32",
+     "userAgent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) HeadlessChrome/154.0.0.0 Safari/537.36",
+     "crossOriginIsolated": false,
+     "selection": {
+      "seed": 20260927,
+      "warm": 20,
+      "timed": 500
+     },
+     "model": {
+      "file": "onepass-c4-v2.onnx",
+      "bytes": 29719176
+     },
+     "ort": {
+      "version": "1.30.0",
+      "numThreads": 1
+     },
+     "cold": {
+      "fetch_ms": 17.900000005960464,
+      "setup_ms": 159.2000000178814,
+      "first_decision_ms": 24.299999982118607,
+      "total_ms": 201.40000000596046
+     },
+     "check": {
+      "positions": 50,
+      "agree": 50,
+      "required": 48,
+      "pass": true
+     },
+     "warm": {
+      "median": 12.199999988079071,
+      "p95": 12.300000011920929,
+      "mean": 12.169199999988079,
+      "n": 500
+     },
+     "batched": "n/a: the ONNX file has a fixed batch of 1",
+     "runtime_files": [
+      {
+       "file": "ort.wasm.min.mjs",
+       "bytes": 50126
+      },
+      {
+       "file": "ort-wasm-simd-threaded.mjs",
+       "bytes": 24381
+      },
+      {
+       "file": "ort-wasm-simd-threaded.wasm",
+       "bytes": 14239897
+      }
+     ],
+     "loadavg_before": [
+      1.26513671875,
+      1.0927734375,
+      1.05224609375
+     ],
+     "loadavg_after": [
+      1.24365234375,
+      1.0908203125,
+      1.0517578125
+     ]
+    },
+    {
+     "backend": "ort",
+     "precision": "fp32",
+     "userAgent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) HeadlessChrome/154.0.0.0 Safari/537.36",
+     "crossOriginIsolated": false,
+     "selection": {
+      "seed": 20260927,
+      "warm": 20,
+      "timed": 500
+     },
+     "model": {
+      "file": "onepass-c4-v2.onnx",
+      "bytes": 29719176
+     },
+     "ort": {
+      "version": "1.30.0",
+      "numThreads": 1
+     },
+     "cold": {
+      "fetch_ms": 18.099999994039536,
+      "setup_ms": 159.59999999403954,
+      "first_decision_ms": 24.5,
+      "total_ms": 202.19999998807907
+     },
+     "check": {
+      "positions": 50,
+      "agree": 50,
+      "required": 48,
+      "pass": true
+     },
+     "warm": {
+      "median": 12.199999988079071,
+      "p95": 12.300000011920929,
+      "mean": 12.181,
+      "n": 500
+     },
+     "batched": "n/a: the ONNX file has a fixed batch of 1",
+     "runtime_files": [
+      {
+       "file": "ort.wasm.min.mjs",
+       "bytes": 50126
+      },
+      {
+       "file": "ort-wasm-simd-threaded.mjs",
+       "bytes": 24381
+      },
+      {
+       "file": "ort-wasm-simd-threaded.wasm",
+       "bytes": 14239897
+      }
+     ],
+     "loadavg_before": [
+      1.24365234375,
+      1.0908203125,
+      1.0517578125
+     ],
+     "loadavg_after": [
+      1.2060546875,
+      1.0869140625,
+      1.05078125
+     ]
+    }
+   ],
+   "median_of_medians_ms": 12.199999988079071,
+   "median_of_p95_ms": 12.300000011920929,
+   "median_of_means_ms": 12.169199999988079,
+   "cold_total_ms_median": 201.40000000596046
+  }
+ },
+ "browser": "Chrome 154.0.8037.58 (headless=new)"
+}

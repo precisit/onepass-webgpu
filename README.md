@@ -11,7 +11,7 @@ Research-grade. TypeScript + WGSL, no WebAssembly, no dependencies at runtime. C
 
 | Milestone | State |
 | --- | --- |
-| A1: v2 Connect Four model on WebGPU, offline-compiled plan | done: argmax parity on all 17 325 eval positions (f32), 4.1 ms per move, see below |
+| A1: v2 Connect Four model on WebGPU, offline-compiled plan | done: argmax parity on all 17 325 eval positions (f32); 1.3 ms per move on an idle M5 Pro (onnxruntime-web wasm: 12.7 ms), see below |
 | Speed protocol (`SPEED-PROTOCOL.md`) | frozen before the first measurement |
 | A2: load the ONNX graph in the browser (no offline plan) | done for the one-pass scorer family: `Engine.fromOnnx(bytes)` recognises the layers of the unchanged v1, v2 and v2-int8 files; parity below |
 | int8 weights (load the published int8 file directly) | done: weights stay 8-bit on the GPU, unpacked inside the matmul; parity with its reference on all 17 325 positions, see below |
@@ -22,6 +22,27 @@ Research-grade. TypeScript + WGSL, no WebAssembly, no dependencies at runtime. C
 Correctness ([record](tests/results/2026-09-27-parity-c4-v2.json)): on all 17 325 positions of the Connect Four eval set, run through the demo page's own code path in
 headless Chrome, the f32 runtime chooses the same column as ONNX Runtime (CPU, fp32) every time; the largest
 score difference is 6.6e-5. With f16 weights, 17 322 of 17 325 match (the other three are near ties).
+
+Speed on an idle machine, under [SPEED-PROTOCOL.md](SPEED-PROTOCOL.md) (500 eval positions after 20 warm-up moves,
+one decision at a time, three runs, median of the three medians). Apple M5 Pro (20-core GPU), Chrome 154
+(`--headless=new`, Metal adapter), load average about 1. Record:
+[`bench/results/2026-09-27-M5Pro-chrome.json`](bench/results/2026-09-27-M5Pro-chrome.json), runtime commit `94c8af9`.
+
+| backend | model file | median | p95 | GPU time | engine set-up + first move | runtime code (gzip) |
+| --- | --- | ---: | ---: | ---: | ---: | ---: |
+| onepass-webgpu, f32 | fp32 ONNX, 29.7 MB | **1.3 ms** | 1.4 ms | 0.92 ms | 28 ms | **37 KB (12 KB)** |
+| onepass-webgpu, f16 weights | the same file | **0.9 ms** | 1.1 ms | 0.59 ms | 30 ms | 37 KB (12 KB) |
+| onepass-webgpu, int8 weights | int8 ONNX, 7.8 MB | **1.0 ms** | 1.1 ms | 0.66 ms | 23 ms | 37 KB (12 KB) |
+| onnxruntime-web 1.30, wasm | int8 ONNX, 7.8 MB | 12.7 ms | 12.9 ms | - | 180 ms | 14.3 MB (3.7 MB) |
+| onnxruntime-web 1.30, wasm | fp32 ONNX, 29.7 MB | 12.2 ms | 12.3 ms | - | 184 ms | 14.3 MB (3.7 MB) |
+
+- About ten times faster per move than onnxruntime-web on the same machine and page. GPU time is the compute pass
+  (timestamp queries); the rest of a move is submitting and reading back seven numbers.
+- Batched, 64 positions per call: 0.32 ms per position (f32), 0.24 ms (f16), 0.28 ms (int8).
+- Chrome reports `performance.now()` in 0.1 ms steps, so medians near 1 ms are quantized to that.
+- onnxruntime-web ran single-threaded, as on a page without cross-origin isolation (for example GitHub Pages).
+
+The first record, from a busy laptop (provisional):
 
 Speed, under [SPEED-PROTOCOL.md](SPEED-PROTOCOL.md) (500 eval positions after 20 warm-up moves, one decision at a
 time, three runs, median of the three medians). Apple M1 Max, Chrome 153 (`--headless=new`, Metal adapter), on AC
