@@ -177,7 +177,9 @@ export class Engine {
   readonly config: PlanConfig;
   /** "f32"/"f16" for float weights, "int8" when the matmul weights are packed 8-bit. */
   get weightFormat(): string {
-    return this.packed.size ? `int8 (${this.precision} for the rest)` : this.precision;
+    if (!this.packed.size) return this.precision;
+    const kinds = new Set([...this.packed.values()].map((q) => q.format?.kind ?? q.kind));
+    return `${[...kinds].join(" + ")} (${this.precision} for the rest)`;
   }
   /** Bytes of weights held on the GPU. */
   get weightBytes(): number {
