@@ -69,7 +69,8 @@ def main():
     server = serve(ROOT)
     bundle = (ROOT / "dist" / "onepass-webgpu.js").read_bytes()
     record = {
-        "commit": sh(f"git -C {ROOT} rev-parse --short HEAD") + ("-dirty" if sh(f"git -C {ROOT} status --porcelain -- runtime bench") else ""),
+        "commit": (sh(f"git -C {ROOT} rev-parse --short HEAD") + ("-dirty" if sh(f"git -C {ROOT} status --porcelain -- runtime bench") else ""))
+                  or ((ROOT / "COMMIT").read_text().strip() if (ROOT / "COMMIT").exists() else ""),
         "protocol_sha256": hashlib.sha256((ROOT / "SPEED-PROTOCOL.md").read_bytes()).hexdigest(),
         "time_utc": datetime.datetime.now(datetime.timezone.utc).isoformat(timespec="seconds"),
         "machine": machine(),
