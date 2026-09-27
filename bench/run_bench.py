@@ -41,6 +41,7 @@ def sh(cmd):
 
 def machine():
     return {"model": sh("sysctl -n hw.model"), "chip": sh("sysctl -n machdep.cpu.brand_string"),
+            "gpu_cores": sh("system_profiler SPDisplaysDataType | grep -i 'cores' | head -1").split(":")[-1].strip(),
             "os": platform.platform(), "power": sh("pmset -g batt | head -1").replace("Now drawing from ", "")}
 
 
@@ -58,6 +59,7 @@ def main():
     p = argparse.ArgumentParser()
     p.add_argument("--data", type=Path, required=True)
     p.add_argument("--browser", default="chrome", choices=["chrome"])
+    p.add_argument("--chrome", help="path to a Chrome executable (e.g. Chrome for Testing) instead of the installed Chrome")
     p.add_argument("--runs", type=int, default=3)
     p.add_argument("--only", nargs="*", default=list(BACKENDS))
     p.add_argument("--out", type=Path, default=ROOT / "bench" / "results")
@@ -81,8 +83,12 @@ def main():
         for name in a.only:
             runs = []
             for i in range(a.runs):
-                browser = pw.chromium.launch(channel="chrome", headless=True, args=["--headless=new"])
-                record["browser"] = f"Chrome {browser.version} (headless=new)"
+                if a.chrome:
+                    browser = pw.chromium.launch(executable_path=a.chrome, headless=True, args=["--headless=new"])
+                    record["browser"] = f"Chrome for Testing {browser.version} (headless=new)"
+                else:
+                    browser = pw.chromium.launch(channel="chrome", headless=True, args=["--headless=new"])
+                    record["browser"] = f"Chrome {browser.version} (headless=new)"
                 page = browser.new_page()
                 load_before = os.getloadavg()
                 page.goto(f"http://127.0.0.1:{server.server_port}/bench/bench.html?{BACKENDS[name]}&data=../{rel}/")
