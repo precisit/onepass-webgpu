@@ -149,12 +149,19 @@ def extract(model: onnx.ModelProto) -> tuple[dict, dict]:
     rank = shape(tensors["head.q.w"])[1]
 
     heads = None
-    for node in g.node:  # number of attention heads from the reshape that splits q/k/v
-        if node.op_type == "Reshape" and node.input[1] in inits:
+    for node in g.node:  # number of attention heads from the reshape that splits q/k/v: [L, heads, head_dim]
+        if node.op_type != "Reshape":
+            continue
+        src = producer.get(node.input[1])
+        if node.input[1] in inits:
             s = inits[node.input[1]]
-            if s.ndim == 1 and len(s) == 3 and s[-1] > 0 and width % int(s[-1]) == 0 and int(s[-1]) < width:
-                heads = width // int(s[-1])
-                break
+        elif src is not None and src.op_type == "Constant" and src.attribute and src.attribute[0].name == "value":
+            s = numpy_helper.to_array(src.attribute[0].t)
+        else:
+            continue
+        if s.ndim == 1 and len(s) == 3 and s[1] > 0 and s[2] > 0 and s[1] * s[2] == width and s[2] < width:
+            heads = int(s[1])
+            break
     # heads = None: the export computes its reshape shapes at run time; main() tries the candidates and keeps
     # the one ONNX Runtime confirms
     config = {"vocab": int(vocab), "width": int(width), "heads": int(heads) if heads else None, "layers": len(ctx_layers),

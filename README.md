@@ -13,7 +13,7 @@ Research-grade. TypeScript + WGSL, no WebAssembly, no dependencies at runtime. C
 | --- | --- |
 | A1: v2 Connect Four model on WebGPU, offline-compiled plan | done: argmax parity on all 17 325 eval positions (f32), 4.1 ms per move, see below |
 | Speed protocol (`SPEED-PROTOCOL.md`) | frozen before the first measurement |
-| A2: load the ONNX graph in the browser (no offline plan) | next |
+| A2: load the ONNX graph in the browser (no offline plan) | done for the one-pass scorer family: `Engine.fromOnnx(bytes)` recognises the layers of the unchanged v1, v2 and v2-int8 files; parity below |
 | int8 weights (load the published int8 file directly) | done: weights stay 8-bit on the GPU, unpacked inside the matmul; parity with its reference on all 17 325 positions, see below |
 | Plugin API for custom weight formats | first version: `WeightFormat` (pack at load, a WGSL `w4(k, n4)` decode inside the matmul) |
 
@@ -58,6 +58,23 @@ slightly by design.
   17 004. So the weight-only path stays closer to the fp32 model.
 - Speed: at batch 1 about the same as f32 (a move is bound by dispatches, not weight bandwidth), a little faster at
   batch 64. The protocol record follows.
+
+### A2: unchanged ONNX files, no offline step
+
+`Engine.fromOnnx(bytes)` reads the graph in the browser (nodes, attributes, initializers), recognises the same
+layer patterns as `compiler/compile_onepass.py` and builds the plan itself. For the three published Connect Four
+files the in-browser plan is identical to the Python compiler's. Parity through `Engine.fromOnnx`
+([record](tests/results/2026-09-27-parity-fromonnx.json)):
+
+| file | positions | same choice | largest score difference |
+| --- | ---: | ---: | ---: |
+| v1, `onepass-c4-8x24.onnx` (2 x 128, 224-byte context), vs ONNX Runtime | 2 000 recorded random inputs | 2 000 | 1.9e-5 |
+| v2 fp32 vs ONNX Runtime fp32 | 17 325 eval positions | 17 325 | 6.6e-5 |
+| v2 int8 vs its weight-only reference | 17 325 eval positions | 17 325 | 1.7e-5 |
+
+Scope: this recognises one-pass scorers exported by the toolkit (float or ONNX Runtime dynamic int8), not general
+ONNX graphs; anything else is refused with a message. Sequences longer than 64 tokens (v1's 224-byte context) use a
+chunked attention kernel with an online softmax.
 
 ## Use
 

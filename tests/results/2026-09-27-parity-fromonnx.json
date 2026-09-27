@@ -1,0 +1,32 @@
+{
+ "what": "A2: Engine.fromOnnx on unchanged files (plan recognised in the browser), headless Chrome 153, Apple M1 Max",
+ "runs": [
+  {
+   "file": "v1 onepass-c4-8x24.onnx vs ONNX Runtime CPU (recorded random inputs, tests/make_random_reference.py)",
+   "fromOnnx": true,
+   "positions": 2000,
+   "argmax_agree": 2000,
+   "flips": [],
+   "max_abs_diff": 1.9073486328125e-05,
+   "gpu_weight_bytes": 2836480
+  },
+  {
+   "file": "v2 onepass-c4-v2.onnx vs ONNX Runtime CPU fp32 (eval set)",
+   "fromOnnx": true,
+   "positions": 17325,
+   "argmax_agree": 17325,
+   "flips": [],
+   "max_abs_diff": 6.628036499023438e-05,
+   "gpu_weight_bytes": 29538304
+  },
+  {
+   "file": "v2 onepass-c4-v2-int8.onnx vs its weight-only reference (eval set)",
+   "fromOnnx": true,
+   "positions": 17325,
+   "argmax_agree": 17325,
+   "flips": [],
+   "max_abs_diff": 1.6927719116210938e-05,
+   "gpu_weight_bytes": 7714816
+  }
+ ]
+}

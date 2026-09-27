@@ -3,7 +3,7 @@
 <pre id="log"></pre>
 <script type="module">
 // Runtime vs ONNX Runtime CPU fp32 on the eval set. Query: ?precision=f32|f16&n=17325&batch=1
-import { Engine } from "../dist/onepass-webgpu.js";
+import { Engine, planFromOnnx } from "../dist/onepass-webgpu.js";
 const q = new URLSearchParams(location.search);
 const precision = q.get("precision") ?? "f32";
 const batch = Number(q.get("batch") ?? 1);
@@ -24,12 +24,15 @@ function encode(board, ctx, opt, mask, i) {
   }
 }
 try {
-  const [plan, onnx, ref, meta] = await Promise.all([
-    fetch(base + "plan.json").then((r) => r.json()),
+  // ?fromOnnx=1: no offline plan; the page recognises the layers in the unchanged .onnx (A2)
+  const fromOnnx = q.get("fromOnnx") === "1";
+  const [planFile, onnx, ref, meta] = await Promise.all([
+    fromOnnx ? null : fetch(base + "plan.json").then((r) => r.json()),
     fetch(base + (q.get("model") ?? "onepass-c4-v2.onnx")).then((r) => r.arrayBuffer()),
     fetch(base + "reference/logits.bin").then((r) => r.arrayBuffer()).then((b) => new Float32Array(b)),
     fetch(base + "reference/reference.json").then((r) => r.json()),
   ]);
+  const plan = fromOnnx ? planFromOnnx(onnx) : planFile;
   // recorded inputs (tests/make_random_reference.py) or Connect Four boards (tests/make_reference.py)
   const recorded = meta.inputs
     ? await fetch(base + "reference/" + meta.inputs).then((r) => r.arrayBuffer()).then((b) => new Int32Array(b)) : null;
@@ -73,7 +76,7 @@ try {
     }
   }
   const ms = performance.now() - t0;
-  const result = { precision, weights: engine.weightFormat, gpu_weight_bytes: engine.weightBytes, batch, positions: n, argmax_agree: agree, flips: flips.slice(0, 50),
+  const result = { fromOnnx, precision, weights: engine.weightFormat, gpu_weight_bytes: engine.weightBytes, batch, positions: n, argmax_agree: agree, flips: flips.slice(0, 50),
     max_abs_diff: maxDiff, mean_abs_diff: sumDiff / count, ms_total: Math.round(ms),
     adapter: { vendor: engine.adapterInfo.vendor, architecture: engine.adapterInfo.architecture },
     userAgent: navigator.userAgent };

@@ -10,6 +10,8 @@ import * as K from "./kernels";
 import { dequantTensor, floatTensor, type Initializer, readInitializers } from "./onnx";
 
 export { floatTensor, halfToFloat, readInitializers, type Initializer } from "./onnx";
+export { planFromOnnx } from "./graph";
+import { planFromOnnx } from "./graph";
 
 export interface PlanConfig {
   vocab: number;
@@ -251,6 +253,11 @@ export class Engine {
       this.querySet = device.createQuerySet({ type: "timestamp", count: 2 });
       this.queryBuffer = device.createBuffer({ size: 16, usage: GPUBufferUsage.QUERY_RESOLVE | GPUBufferUsage.COPY_SRC });
     }
+  }
+
+  /** Load an unchanged one-pass scorer ONNX file: recognise its layers in the browser, then load. */
+  static async fromOnnx(onnx: ArrayBuffer | Uint8Array, options: LoadOptions = {}): Promise<Engine> {
+    return Engine.load(planFromOnnx(onnx), onnx, options);
   }
 
   /** Load a plan and its ONNX file (bytes) onto the GPU. */

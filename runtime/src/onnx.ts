@@ -51,6 +51,7 @@ function fields(buf: Uint8Array, start: number, end: number, visit: (field: numb
 function tensor(buf: Uint8Array, start: number, end: number): Initializer {
   const out: Initializer = { name: "", dims: [], dataType: 0, bytes: new Uint8Array(0) };
   let floats: number[] | null = null;
+  let ints: number[] | null = null; // int32_data: also carries int8 / uint8 / int16 / bool values
   fields(buf, start, end, (field, wire, r) => {
     if (field === 1 && wire === 0) out.dims.push(r.varint());
     else if (field === 1 && wire === 2) {
@@ -69,11 +70,28 @@ function tensor(buf: Uint8Array, start: number, end: number): Initializer {
       const len = r.varint();
       floats = Array.from(new Float32Array(buf.slice(r.pos, r.pos + len).buffer));
       r.pos += len;
+    } else if (field === 5 && wire === 2) {
+      const len = r.varint();
+      const stop = r.pos + len;
+      ints ??= [];
+      while (r.pos < stop) ints.push(r.varint());
+    } else if (field === 5 && wire === 0) {
+      (ints ??= []).push(r.varint());
     } else if (field === 14 && r.varint() === 1) {
       throw new Error("onnx: external data is not supported yet");
     }
   });
   if (floats) out.bytes = new Uint8Array(new Float32Array(floats).buffer);
+  const iv = ints as number[] | null; // assigned inside the callback, which TypeScript does not track
+  if (iv && !out.bytes.byteLength) {
+    if (out.dataType === 2 || out.dataType === 3) out.bytes = new Uint8Array(iv.map((v) => v & 255));
+    else if (out.dataType === 6) out.bytes = new Uint8Array(new Int32Array(iv).buffer);
+  }
+  // a scalar with no data at all is zero
+  if (!out.bytes.byteLength && out.dims.length === 0) {
+    const size = { 1: 4, 2: 1, 3: 1, 6: 4, 7: 8, 10: 2 }[out.dataType] ?? 0;
+    out.bytes = new Uint8Array(size);
+  }
   return out;
 }
 
