@@ -31,7 +31,9 @@ try {
     fetch(base + "reference/logits.bin").then((r) => r.arrayBuffer()).then((b) => new Float32Array(b)),
     fetch(base + "reference/reference.json").then((r) => r.json()),
   ]);
-  const engine = await Engine.load(plan, onnx, { precision, maxBatch: batch });
+  // ?plugins=<module url>: an ES module exporting `formats` (WeightFormat plugins for the plan's tensors)
+  const formats = q.get("plugins") ? (await import(q.get("plugins"))).formats : [];
+  const engine = await Engine.load(plan, onnx, { precision, maxBatch: batch, formats });
   log(`weights ${engine.weightFormat}, ${engine.weightBytes} bytes on the GPU`);
   log(`adapter ${engine.adapterInfo.vendor} ${engine.adapterInfo.architecture}, ${engine.dispatchCount(batch)} dispatches`);
   const n = Math.min(Number(q.get("n") ?? meta.positions), meta.positions);

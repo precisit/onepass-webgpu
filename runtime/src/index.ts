@@ -7,9 +7,9 @@
 // the weights are read straight out of the unchanged .onnx file.
 
 import * as K from "./kernels";
-import { dequantTensor, floatTensor, readInitializers } from "./onnx";
+import { dequantTensor, floatTensor, type Initializer, readInitializers } from "./onnx";
 
-export { readInitializers } from "./onnx";
+export { floatTensor, halfToFloat, readInitializers, type Initializer } from "./onnx";
 
 export interface PlanConfig {
   vocab: number;
@@ -38,6 +38,26 @@ export interface PlanTensor {
   shape: number[];
   /** Per-tensor quantization of an 8-bit initializer: value = (q - zero_point) * scale. */
   quant?: { dtype: "int8" | "uint8"; scale: number; zero_point: number };
+  /** Use only rows [start, end) of a 2-D initializer (e.g. the first positions of a position table). */
+  rows?: [number, number];
+  /** A weight format provided by a plugin (see WeightFormat); `initializer` names its main packed tensor. */
+  format?: { kind: string; [key: string]: unknown };
+}
+
+/**
+ * A plugin weight format for matmul weights ([K, N], x @ W). At load time `pack` turns the tensor into bytes
+ * (uploaded as-is into the packed-weight buffer) plus optional float side data (e.g. group scales) and two u32
+ * parameters. In the matmul kernel, the format's WGSL must define
+ *
+ *     fn w4(k: u32, n4: u32) -> vec4<f32>     // W[k, 4 n4 .. 4 n4 + 3]
+ *
+ * and may use qbyte(i) (byte i of this tensor's packed bytes), fval(i) (float i of its side data) and the
+ * uniforms p.K, p.N, p.x0, p.x1 (the two parameters from pack).
+ */
+export interface WeightFormat {
+  kind: string;
+  wgsl: string;
+  pack(t: PlanTensor, inits: Map<string, Initializer>): { bytes: Uint8Array; floats?: Float32Array; params?: [number, number] };
 }
 
 interface Packed8 {
@@ -45,6 +65,11 @@ interface Packed8 {
   kind: "int8" | "uint8";
   scale: number;
   zeroPoint: number;
+  /** plugin formats: the format, byte offset, side-data offset (elements of the float buffer), parameters */
+  format?: WeightFormat;
+  offsetBytes?: number;
+  floatOffset?: number;
+  params?: [number, number];
 }
 
 export type Precision = "f32" | "f16";
@@ -59,6 +84,8 @@ export interface LoadOptions {
   allowSoftware?: boolean;
   /** Kernel tuning knobs (defaults measured on an M1 Max). */
   tuning?: Partial<Tuning>;
+  /** Plugin weight formats, matched by PlanTensor.format.kind. */
+  formats?: WeightFormat[];
 }
 
 export interface Tuning {
@@ -264,15 +291,42 @@ export class Engine {
       const init = inits.get(t.initializer);
       if (!init) throw new Error(`the ONNX file has no initializer ${t.initializer} (for ${name})`);
       const expected = t.shape.reduce((a, b) => a * b, 1);
+      if (t.format) {
+        const fmt = (options.formats ?? []).find((f) => f.kind === t.format!.kind);
+        if (!fmt) throw new Error(`${name}: no plugin for weight format ${t.format.kind}`);
+        const { bytes, floats, params } = fmt.pack(t, inits);
+        const entry: Packed8 = { offsetWords: total8 / 4, kind: "int8", scale: 1, zeroPoint: 0, format: fmt,
+          offsetBytes: total8, floatOffset: 0, params: params ?? [0, 0] };
+        packed.set(name, entry);
+        bytes8.push(bytes);
+        total8 += Math.ceil(bytes.byteLength / 256) * 256;
+        if (floats) {
+          entry.floatOffset = total;
+          parts.push({ name: `${name}#side`, data: floats });
+          offsets.set(`${name}#side`, total);
+          total += Math.ceil(floats.length / 64) * 64;
+        }
+        continue;
+      }
       if (t.quant && name !== "embedding") {
-        if (t.transpose || t.shape.length !== 2 || t.shape[1] % 4 !== 0) throw new Error(`${name}: unsupported 8-bit layout`);
+        if (t.shape.length !== 2 || t.shape[1] % 4 !== 0) throw new Error(`${name}: unsupported 8-bit layout`);
         if (init.bytes.byteLength !== expected) throw new Error(`${name}: ${init.bytes.byteLength} bytes, plan says ${expected}`);
+        let bytes = init.bytes;
+        if (t.transpose) {
+          const [rows, cols] = init.dims;
+          bytes = new Uint8Array(bytes.length);
+          for (let r = 0; r < rows; r += 1) for (let c = 0; c < cols; c += 1) bytes[c * rows + r] = init.bytes[r * cols + c];
+        }
         packed.set(name, { offsetWords: total8 / 4, kind: t.quant.dtype, scale: t.quant.scale, zeroPoint: t.quant.zero_point });
-        bytes8.push(init.bytes);
+        bytes8.push(bytes);
         total8 += Math.ceil(init.bytes.byteLength / 256) * 256;
         continue;
       }
-      const data = t.quant ? dequantTensor(init, t.quant.scale, t.quant.zero_point) : floatTensor(init, t.transpose);
+      let data = t.quant ? dequantTensor(init, t.quant.scale, t.quant.zero_point) : floatTensor(init, t.transpose);
+      if (t.rows) {
+        const cols = data.length / (t.transpose ? init.dims[1] : init.dims[0]);
+        data = data.slice(t.rows[0] * cols, t.rows[1] * cols);
+      }
       if (data.length !== expected) throw new Error(`${name}: ${data.length} values, plan says ${expected}`);
       offsets.set(name, total);
       parts.push({ name, data });
@@ -362,6 +416,13 @@ export class Engine {
       aSplits = 0, aBias: string | null = null, aRelu = false, target = this.tuning.splitTarget) => {
       const { S, RM } = splits(M, Kin, N, target);
       const q = this.packed.get(w);
+      if (q?.format) {
+        const v: K.MatmulVariant = { RM, KS: Kin / S, aSplits, aRelu, plugin: q.format.kind };
+        const pipe = this.pipeline(`mm${f16}${JSON.stringify(v)}`, () => K.matmul(f16, v, q.format!.wgsl));
+        add(pipe, [M, N, Kin, q.offsetBytes!, aBias ? this.off(aBias) : 0, q.floatOffset!, ...q.params!], {},
+          [b.weights8, a, out, b.weights], [Math.ceil(N / 256), Math.ceil(M / RM), S]);
+        return S;
+      }
       const v: K.MatmulVariant = { RM, KS: Kin / S, aSplits, aRelu, ...(q ? { w8: q.kind } : {}) };
       const pipe = this.pipeline(`mm${f16}${JSON.stringify(v)}`, () => K.matmul(f16, v));
       if (q) {

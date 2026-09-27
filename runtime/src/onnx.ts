@@ -97,11 +97,28 @@ export function readInitializers(file: ArrayBuffer | Uint8Array): Map<string, In
   return found;
 }
 
-/** A float32 initializer as a Float32Array, optionally transposed from [rows, cols] to [cols, rows]. */
+export function halfToFloat(h: number): number {
+  const sign = h & 0x8000 ? -1 : 1;
+  const exp = (h >> 10) & 0x1f;
+  const mant = h & 0x3ff;
+  if (exp === 0) return sign * mant * 2 ** -24;
+  if (exp === 31) return mant ? NaN : sign * Infinity;
+  return sign * (1 + mant / 1024) * 2 ** (exp - 15);
+}
+
+/** A float32 or float16 initializer as a Float32Array, optionally transposed from [rows, cols] to [cols, rows]. */
 export function floatTensor(init: Initializer, transpose = false): Float32Array {
-  if (init.dataType !== 1) throw new Error(`onnx: ${init.name} is data type ${init.dataType}, expected float32`);
-  const src = new Float32Array(init.bytes.byteLength / 4);
-  new Uint8Array(src.buffer).set(init.bytes);
+  let src: Float32Array;
+  if (init.dataType === 1) {
+    src = new Float32Array(init.bytes.byteLength / 4);
+    new Uint8Array(src.buffer).set(init.bytes);
+  } else if (init.dataType === 10) {
+    const h = new Uint16Array(init.bytes.byteLength / 2);
+    new Uint8Array(h.buffer).set(init.bytes);
+    src = Float32Array.from(h, halfToFloat);
+  } else {
+    throw new Error(`onnx: ${init.name} is data type ${init.dataType}, expected float32 or float16`);
+  }
   if (!transpose) return src;
   const [rows, cols] = init.dims;
   const out = new Float32Array(src.length);

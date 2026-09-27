@@ -15,7 +15,7 @@ Research-grade. TypeScript + WGSL, no WebAssembly, no dependencies at runtime. C
 | Speed protocol (`SPEED-PROTOCOL.md`) | frozen before the first measurement |
 | A2: load the ONNX graph in the browser (no offline plan) | next |
 | int8 weights (load the published int8 file directly) | done: weights stay 8-bit on the GPU, unpacked inside the matmul; parity with its reference on all 17 325 positions, see below |
-| Plugin API for custom weight formats | planned |
+| Plugin API for custom weight formats | first version: `WeightFormat` (pack at load, a WGSL `w4(k, n4)` decode inside the matmul) |
 
 ## Results (A1, v2 Connect Four model)
 
