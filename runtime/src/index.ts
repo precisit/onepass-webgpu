@@ -442,14 +442,20 @@ export class Engine {
         [b.weights, part, x, y], [M, 1, 1]);
     };
     const D = c.width / c.heads;
-    const maxL = Math.ceil(Math.max(c.context_len, c.option_len) / 8) * 8;
-    if (maxL * D * 2 * 4 > 13000) throw new Error("sequence too long for the attention kernel");
+    // sequences that fit the short kernel's shared memory use it; longer ones use the chunked kernel
+    const fitsShort = (L: number) => L <= 64 && Math.ceil(L / 8) * 8 * D * 2 * 4 <= 13000;
+    const shortL = [c.context_len, c.option_len].filter(fitsShort);
+    const maxL = shortL.length ? Math.ceil(Math.max(...shortL) / 8) * 8 : 8;
+    if (D > 128) throw new Error("head dimension above 128 is not supported");
     const layer = (name: string, next: string, x: GPUBuffer, y: GPUBuffer, seqs: number, L: number, idsOff: number) => {
       const M = seqs * L;
       label = `${name}.qkv`;
       const sQkv = matmul(M, c.width, 3 * c.width, y, b.p1, `${name}.qkv.w`, 0, null, false, this.tuning.qkvSplitTarget);
       label = `${name}.attention`;
-      add(this.pipeline(`att${f16}${sQkv}`, () => K.attention(f16, D, sQkv, maxL)), [L, idsOff, c.width, 0, M, this.off(`${name}.qkv.b`)],
+      const att = fitsShort(L)
+        ? this.pipeline(`att${f16}${sQkv}`, () => K.attention(f16, D, sQkv, maxL))
+        : this.pipeline(`attlong${f16}${sQkv}`, () => K.attentionLong(f16, D, sQkv));
+      add(att, [L, idsOff, c.width, 0, M, this.off(`${name}.qkv.b`)],
         { 3: 1 / Math.sqrt(D) }, [b.weights, b.p1, b.ids, b.att], [c.heads, seqs, Math.ceil(L / 8)]);
       label = `${name}.out`;
       const sOut = matmul(M, c.width, c.width, b.att, b.p2, `${name}.out.w`);
@@ -472,7 +478,7 @@ export class Engine {
     const sk = matmul(ctxRows, c.width, c.rank, b.yc, b.p1, "head.k.w");
     const sv = matmul(ctxRows, c.width, c.rank, b.yc, b.p2, "head.v.w");
     label = "head";
-    add(this.pipeline(`head${sq}${sk}${sv}`, () => K.head(sq, sk, sv)),
+    add(this.pipeline(`head${sq}${sk}${sv}`, () => K.head(sq, sk, sv, c.context_len)),
       [c.context_len, c.option_slots, c.rank, ctxIds, maskIds, 0, optSeqs, ctxRows], { 5: 1 / Math.sqrt(c.rank) },
       [b.pq, b.p1, b.p2, b.ids, b.logits], [c.option_slots, batch, 1]);
 

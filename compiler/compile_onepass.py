@@ -155,9 +155,9 @@ def extract(model: onnx.ModelProto) -> tuple[dict, dict]:
             if s.ndim == 1 and len(s) == 3 and s[-1] > 0 and width % int(s[-1]) == 0 and int(s[-1]) < width:
                 heads = width // int(s[-1])
                 break
-    if heads is None:
-        heads = 8  # fall back to the toolkit default; the numpy check below catches a wrong guess
-    config = {"vocab": int(vocab), "width": int(width), "heads": int(heads), "layers": len(ctx_layers),
+    # heads = None: the export computes its reshape shapes at run time; main() tries the candidates and keeps
+    # the one ONNX Runtime confirms
+    config = {"vocab": int(vocab), "width": int(width), "heads": int(heads) if heads else None, "layers": len(ctx_layers),
               "ff": int(ff), "rank": int(rank), "context_len": int(ctx_len), "option_slots": int(opt_slots),
               "option_len": int(opt_len), "eps": 1e-5, "activation": "relu", "norm_first": True}
     for name, ref in tensors.items():
@@ -293,6 +293,19 @@ def main() -> None:
         opt = rng.integers(33, 127, size=(args.check, cfg["option_slots"], cfg["option_len"]), dtype=np.int32)
         mask = (np.arange(cfg["option_slots"])[None] < rng.integers(2, cfg["option_slots"] + 1, size=(args.check, 1))).astype(np.int32)
         opt = opt * mask[..., None]
+    if cfg["heads"] is None:
+        def trial(h):
+            c = {**cfg, "heads": h}
+            err = 0.0
+            for i in range(min(10, len(ctx))):
+                want = session.run(None, {"context_ids": ctx[i:i + 1], "option_ids": opt[i:i + 1], "option_mask": mask[i:i + 1]})[0][0]
+                got = reference(c, tensors, ctx[i:i + 1], opt[i:i + 1], mask[i:i + 1])[0]
+                err = max(err, float(np.abs(want - got)[mask[i] != 0].max()))
+            return err
+        candidates = [h for h in (1, 2, 4, 8, 16, 32) if cfg["width"] % h == 0 and cfg["width"] // h >= 8]
+        errors = {h: trial(h) for h in candidates}
+        cfg["heads"] = min(errors, key=errors.get)
+        print(json.dumps({"heads_tried": errors, "heads": cfg["heads"]}))
     worst, agree = 0.0, 0
     for i in range(len(ctx)):
         want = session.run(None, {"context_ids": ctx[i:i + 1], "option_ids": opt[i:i + 1], "option_mask": mask[i:i + 1]})[0][0]

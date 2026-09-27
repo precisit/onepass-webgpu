@@ -220,6 +220,92 @@ fn main(@builtin(workgroup_id) wg: vec3u, @builtin(local_invocation_index) t: u3
 }
 `;
 
+/**
+ * Attention for sequences longer than the short kernel holds (L > 64): keys and values in chunks of 32 with an
+ * online softmax. Same layout and masking as `attention`; head dim D <= 128.
+ */
+export const attentionLong = (f16: boolean, headDim: number, splits: number) => `${header(f16)}
+const D = ${headDim}u;
+const QB = 8u;
+const CH = 32u;
+const DL = ${Math.ceil(headDim / 32)}u;
+struct P { L: u32, idsOff: u32, width: u32, scale: f32, M: u32, bOff: u32, p6: u32, p7: u32 }
+@group(0) @binding(0) var<uniform> p: P;
+@group(0) @binding(1) var<storage, read> W: array<WT>;
+@group(0) @binding(2) var<storage, read> Part: array<f32>;
+@group(0) @binding(3) var<storage, read> ids: array<i32>;
+@group(0) @binding(4) var<storage, read_write> O: array<f32>;
+var<workgroup> ks: array<f32, ${32 * headDim}>;
+var<workgroup> vs: array<f32, ${32 * headDim}>;
+var<workgroup> qs: array<f32, ${8 * headDim}>;
+var<workgroup> sc: array<f32, 256>;
+
+fn proj(row: u32, col: u32) -> f32 {
+  var a = 0.0;
+  for (var j = 0u; j < ${splits}u; j += 1u) { a += Part[(j * p.M + row) * 3u * p.width + col]; }
+  return a + f32(W[p.bOff + col]);
+}
+
+fn valid(base: u32, l: u32) -> bool { return l == 0u || ids[p.idsOff + base + l] != 0; }
+
+@compute @workgroup_size(256)
+fn main(@builtin(workgroup_id) wg: vec3u, @builtin(local_invocation_index) t: u32) {
+  let h = wg.x;
+  let base = wg.y * p.L;
+  let q0 = wg.z * QB;
+  for (var e = t; e < QB * D; e += 256u) {
+    let qi = q0 + e / D;
+    qs[e] = select(0.0, proj(base + qi, h * D + e % D), qi < p.L);
+  }
+  let qi = t / 32u;
+  let lane = t % 32u;
+  var m = -3.0e38;
+  var sum = 0.0;
+  var o: array<f32, DL>;
+  for (var c0 = 0u; c0 < p.L; c0 += CH) {
+    workgroupBarrier();
+    for (var e = t; e < CH * D; e += 256u) {
+      let l = c0 + e / D;
+      let col = h * D + e % D;
+      ks[e] = select(0.0, proj(base + l, p.width + col), l < p.L);
+      vs[e] = select(0.0, proj(base + l, 2u * p.width + col), l < p.L);
+    }
+    workgroupBarrier();
+    let l = c0 + lane;
+    var s = -3.0e38;
+    if (l < p.L && valid(base, l)) {
+      var dot = 0.0;
+      for (var d = 0u; d < D; d += 1u) { dot += qs[qi * D + d] * ks[lane * D + d]; }
+      s = dot * p.scale;
+    }
+    sc[qi * CH + lane] = s;
+    workgroupBarrier();
+    var cm = m;
+    for (var i = 0u; i < CH; i += 1u) { cm = max(cm, sc[qi * CH + i]); }
+    let corr = exp(m - cm);
+    sum = sum * corr;
+    for (var j = 0u; j < DL; j += 1u) { o[j] = o[j] * corr; }
+    for (var i = 0u; i < CH; i += 1u) {
+      let li = c0 + i;
+      if (li >= p.L || !valid(base, li)) { continue; }
+      let e = exp(sc[qi * CH + i] - cm);
+      sum += e;
+      for (var j = 0u; j < DL; j += 1u) {
+        let d = lane + 32u * j;
+        if (d < D) { o[j] += e * vs[i * D + d]; }
+      }
+    }
+    m = cm;
+  }
+  let query = q0 + qi;
+  if (query >= p.L) { return; }
+  for (var j = 0u; j < DL; j += 1u) {
+    let d = lane + 32u * j;
+    if (d < D) { O[(base + query) * p.width + h * D + d] = o[j] / sum; }
+  }
+}
+`;
+
 /** Per option: mean over its non-padding tokens, then LN. One workgroup per option. */
 export const poolNorm = (f16: boolean) => `${header(f16)}
 struct P { L: u32, width: u32, idsOff: u32, lnW: u32, lnB: u32, eps: f32, p6: u32, p7: u32 }
@@ -254,7 +340,7 @@ fn main(@builtin(workgroup_id) wg: vec3u, @builtin(local_invocation_index) t: u3
  * Scoring head: each option's query attends over the context; logit = q . attended * scale.
  * q, k, v are read as sums of their matmul partials. One workgroup per (option, position).
  */
-export const head = (sq: number, sk: number, sv: number) => `
+export const head = (sq: number, sk: number, sv: number, maxLc: number) => `
 struct P { Lc: u32, slots: u32, rank: u32, ctxOff: u32, maskOff: u32, scale: f32, Mq: u32, Mc: u32 }
 @group(0) @binding(0) var<uniform> p: P;
 @group(0) @binding(1) var<storage, read> q: array<f32>;
@@ -263,7 +349,7 @@ struct P { Lc: u32, slots: u32, rank: u32, ctxOff: u32, maskOff: u32, scale: f32
 @group(0) @binding(4) var<storage, read> ids: array<i32>;
 @group(0) @binding(5) var<storage, read_write> logits: array<f32>;
 var<workgroup> qv: array<f32, 1024>;
-var<workgroup> sc: array<f32, 64>;
+var<workgroup> sc: array<f32, ${Math.max(64, Math.ceil(maxLc / 64) * 64)}>;
 var<workgroup> red: array<f32, 256>;
 
 @compute @workgroup_size(256)
@@ -278,23 +364,25 @@ fn main(@builtin(workgroup_id) wg: vec3u, @builtin(local_invocation_index) t: u3
     qv[r] = a;
   }
   workgroupBarrier();
-  // scores: 4 threads per context position
-  let l = t / 4u;
+  // scores: 4 threads per context position, 64 positions per pass
   let part = t % 4u;
-  var dot = 0.0;
-  if (l < p.Lc) {
-    for (var r = part; r < p.rank; r += 4u) {
-      var kk = 0.0;
-      for (var j = 0u; j < ${sk}u; j += 1u) { kk += k[(j * p.Mc + krow + l) * p.rank + r]; }
-      dot += qv[r] * kk;
+  for (var l0 = 0u; l0 < p.Lc; l0 += 64u) {
+    let l = l0 + t / 4u;
+    var dot = 0.0;
+    if (l < p.Lc) {
+      for (var r = part; r < p.rank; r += 4u) {
+        var kk = 0.0;
+        for (var j = 0u; j < ${sk}u; j += 1u) { kk += k[(j * p.Mc + krow + l) * p.rank + r]; }
+        dot += qv[r] * kk;
+      }
     }
+    red[t] = dot;
+    workgroupBarrier();
+    if (part == 0u && l < p.Lc) {
+      sc[l] = (red[t] + red[t + 1u] + red[t + 2u] + red[t + 3u]) * p.scale;
+    }
+    workgroupBarrier();
   }
-  red[t] = dot;
-  workgroupBarrier();
-  if (part == 0u && l < p.Lc) {
-    sc[l] = (red[t] + red[t + 1u] + red[t + 2u] + red[t + 3u]) * p.scale;
-  }
-  workgroupBarrier();
   var mx = -3.0e38;
   var sum = 0.0;
   for (var i = 0u; i < p.Lc; i += 1u) { if (ids[p.ctxOff + krow + i] != 0) { mx = max(mx, sc[i]); } }

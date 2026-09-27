@@ -24,13 +24,27 @@ function encode(board, ctx, opt, mask, i) {
   }
 }
 try {
-  const [plan, onnx, boards, ref, meta] = await Promise.all([
+  const [plan, onnx, ref, meta] = await Promise.all([
     fetch(base + "plan.json").then((r) => r.json()),
     fetch(base + (q.get("model") ?? "onepass-c4-v2.onnx")).then((r) => r.arrayBuffer()),
-    fetch(base + "reference/boards.bin").then((r) => r.arrayBuffer()).then((b) => new Uint8Array(b)),
     fetch(base + "reference/logits.bin").then((r) => r.arrayBuffer()).then((b) => new Float32Array(b)),
     fetch(base + "reference/reference.json").then((r) => r.json()),
   ]);
+  // recorded inputs (tests/make_random_reference.py) or Connect Four boards (tests/make_reference.py)
+  const recorded = meta.inputs
+    ? await fetch(base + "reference/" + meta.inputs).then((r) => r.arrayBuffer()).then((b) => new Int32Array(b)) : null;
+  const boards = recorded ? null
+    : await fetch(base + "reference/boards.bin").then((r) => r.arrayBuffer()).then((b) => new Uint8Array(b));
+  const C = plan.config;
+  const [LC, SL, LO] = [C.context_len, C.option_slots, C.option_len];
+  const rowLen = LC + SL * LO + SL;
+  const fill = (p, ctx, opt, mask, i) => {
+    if (!recorded) return encode(boards.subarray(p * 42, p * 42 + 42), ctx, opt, mask, i);
+    const row = recorded.subarray(p * rowLen, (p + 1) * rowLen);
+    ctx.set(row.subarray(0, LC), i * LC);
+    opt.set(row.subarray(LC, LC + SL * LO), i * SL * LO);
+    mask.set(row.subarray(LC + SL * LO), i * SL);
+  };
   // ?plugins=<module url>: an ES module exporting `formats` (WeightFormat plugins for the plan's tensors)
   const formats = q.get("plugins") ? (await import(q.get("plugins"))).formats : [];
   const engine = await Engine.load(plan, onnx, { precision, maxBatch: batch, formats });
@@ -42,18 +56,18 @@ try {
   const t0 = performance.now();
   for (let s = 0; s < n; s += batch) {
     const m = Math.min(batch, n - s);
-    const ctx = new Int32Array(batch * 44), opt = new Int32Array(batch * 56), mask = new Int32Array(batch * 7);
-    for (let i = 0; i < m; i += 1) encode(boards.subarray((s + i) * 42, (s + i + 1) * 42), ctx, opt, mask, i);
-    for (let i = m; i < batch; i += 1) encode(boards.subarray(0, 42), ctx, opt, mask, i);
+    const ctx = new Int32Array(batch * LC), opt = new Int32Array(batch * SL * LO), mask = new Int32Array(batch * SL);
+    for (let i = 0; i < m; i += 1) fill(s + i, ctx, opt, mask, i);
+    for (let i = m; i < batch; i += 1) fill(0, ctx, opt, mask, i);
     const out = await engine.score(ctx, opt, mask, batch);
     for (let i = 0; i < m; i += 1) {
       const p = s + i;
       let best = -1, bestV = -Infinity;
-      for (let k = 0; k < 7; k += 1) {
-        if (!mask[i * 7 + k]) continue;
-        const d = Math.abs(out[i * 7 + k] - ref[p * 7 + k]);
+      for (let k = 0; k < SL; k += 1) {
+        if (!mask[i * SL + k]) continue;
+        const d = Math.abs(out[i * SL + k] - ref[p * SL + k]);
         maxDiff = Math.max(maxDiff, d); sumDiff += d; count += 1;
-        if (out[i * 7 + k] > bestV) { bestV = out[i * 7 + k]; best = k; }
+        if (out[i * SL + k] > bestV) { bestV = out[i * SL + k]; best = k; }
       }
       if (best === meta.argmax[p]) agree += 1; else flips.push(p);
     }
