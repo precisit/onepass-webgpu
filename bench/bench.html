@@ -13,6 +13,10 @@ const precision = q.get("precision") ?? "f32";
 const modelKind = q.get("model") ?? "fp32";
 const planPath = q.get("plan"); // onepass: another plan (e.g. the int8 file's), relative to this page
 const weights = q.get("weights") ?? "fp32"; // onepass: which file the plan reads
+// onepass: kernel tuning (split=1&qkv=1 switches split-K off; the default target is 4096)
+const tuning = {};
+if (q.get("split")) tuning.splitTarget = Number(q.get("split"));
+if (q.get("qkv")) tuning.qkvSplitTarget = Number(q.get("qkv"));
 const data = q.get("data") ?? "../work/c4-v2/";
 const WARM = 20, TIMED = 500, CHECK = 50, SEED = 20260927;
 const log = (s) => { document.getElementById("log").textContent += s + "\n"; };
@@ -83,7 +87,8 @@ async function main() {
     ]);
     result.model = { file: modelFile, bytes: bytes.byteLength };
     runtimeSetupStart = now();
-    const engine = await Engine.load(plan, bytes, { precision, maxBatch: 64 });
+    const engine = await Engine.load(plan, bytes, { precision, maxBatch: 64, tuning });
+    result.tuning = tuning;
     result.adapter = { vendor: engine.adapterInfo.vendor, architecture: engine.adapterInfo.architecture,
                        device: engine.adapterInfo.device, description: engine.adapterInfo.description };
     result.dispatches = engine.dispatchCount();
@@ -167,7 +172,7 @@ async function main() {
     }
     // GPU time: a separate engine with timestamp queries, never mixed into the headline
     try {
-      const timed = await Engine.load(extra.plan, extra.bytes, { precision, gpuTiming: true });
+      const timed = await Engine.load(extra.plan, extra.bytes, { precision, gpuTiming: true, tuning });
       const gpu = [];
       for (let i = 0; i < WARM + 200; i += 1) {
         await timed.score(inputs[i].ctx, inputs[i].opt, inputs[i].mask);

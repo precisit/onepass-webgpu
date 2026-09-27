@@ -27,6 +27,10 @@ BACKENDS = {
     "onepass-f32": "backend=onepass&precision=f32",
     "onepass-f16": "backend=onepass&precision=f16",
     "onepass-int8": "backend=onepass&precision=f32&weights=int8&plan=../work/c4-v2-int8/plan.json",
+    # split-K variants of the fp32 row (same build, same everything else): off, and around the default 4096
+    "onepass-f32-nosplit": "backend=onepass&precision=f32&split=1&qkv=1",
+    "onepass-f32-split2048": "backend=onepass&precision=f32&split=2048&qkv=2048",
+    "onepass-f32-split8192": "backend=onepass&precision=f32&split=8192&qkv=8192",
     "ort-wasm-int8": "backend=ort&model=int8",
     "ort-wasm-fp32": "backend=ort&model=fp32",
 }
