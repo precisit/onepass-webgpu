@@ -42,6 +42,26 @@ one decision at a time, three runs, median of the three medians). Apple M5 Pro (
 - Chrome reports `performance.now()` in 0.1 ms steps, so medians near 1 ms are quantized to that.
 - onnxruntime-web ran single-threaded, as on a page without cross-origin isolation (for example GitHub Pages).
 
+### Split-K, switched off and at other split targets
+
+The same protocol and machine, one day later (load average about 1), runtime commit `9dbc4f3`. The split target
+is how many threads the heuristic aims for when it splits a matmul along K; "no split" runs the same kernels with
+one split. Record:
+[`bench/results/2026-09-28-M5Pro-chrome-splitk.json`](bench/results/2026-09-28-M5Pro-chrome-splitk.json).
+
+| split target | median per move | GPU time |
+| --- | ---: | ---: |
+| no split | 3.2 ms | 2.82 ms |
+| 2048 | 1.8 ms | 1.51 ms |
+| 4096 (the default) | 1.3 ms | 0.95 ms |
+| 8192 | **1.0 ms** | **0.72 ms** |
+
+- Splitting along K is worth 2.5 times per move and 3 times in GPU time on this machine.
+- The three runs of each setting agreed within 0.1 ms. Batched throughput (64 per call) is 0.32 ms per position
+  in every setting: with a full batch there is enough parallel work without splitting.
+- The best target depends on the GPU. On the M5 Pro 8192 is fastest; in development on a busy M1 Max, 4096 was
+  fastest and 8192 slower. The default stays 4096 until more devices are measured; `tuning.splitTarget` sets it.
+
 The first record, from a busy laptop (provisional):
 
 Speed, under [SPEED-PROTOCOL.md](SPEED-PROTOCOL.md) (500 eval positions after 20 warm-up moves, one decision at a
