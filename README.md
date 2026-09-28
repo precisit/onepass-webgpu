@@ -53,10 +53,11 @@ one split. Record:
 | --- | ---: | ---: |
 | no split | 3.2 ms | 2.82 ms |
 | 2048 | 1.8 ms | 1.51 ms |
-| 4096 (the default) | 1.3 ms | 0.95 ms |
+| 4096 (the default) | 1.3 ms | 0.98 ms |
 | 8192 | **1.0 ms** | **0.72 ms** |
 
-- Splitting along K is worth 2.5 times per move and 3 times in GPU time on this machine.
+- Splitting along K is worth 2.5 times per move and 2.9 times in GPU time on this machine. Each value is the median of
+  the three runs' medians.
 - The three runs of each setting agreed within 0.1 ms. Batched throughput (64 per call) is 0.32 ms per position
   in every setting: with a full batch there is enough parallel work without splitting.
 - The best target depends on the GPU. On the M5 Pro 8192 is fastest; in development on a busy M1 Max, 4096 was
