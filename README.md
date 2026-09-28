@@ -5,6 +5,9 @@ options and return one score per option in a single forward pass (for example th
 [Connect Four model](https://huggingface.co/precisit/onepass-c4) behind the
 [onepass-web demos](https://github.com/precisit/onepass-web)).
 
+The story behind it: [One millisecond to make a move](https://precisit.com/en/blog/onepass-webgpu-speed/)
+(also [in Swedish](https://precisit.com/blog/onepass-webgpu-speed/)).
+
 Research-grade. TypeScript + WGSL, no WebAssembly, no dependencies at runtime. Chrome and Safari only for now.
 
 ## Status
