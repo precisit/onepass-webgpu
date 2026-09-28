@@ -2,6 +2,10 @@
 median of the three medians. Writes one JSON record to bench/results/.
 
     python bench/run_bench.py --data work/c4-v2 [--browser chrome] [--runs 3] [--only onepass-f32]
+    python bench/run_bench.py --data work/c4-v2 --backend NAME=QUERY ... [--tag NAME]
+
+--backend adds a row: QUERY is bench.html's query string (for example another model of the same family with
+file=, plan=, plugins= and ref=, urls relative to bench/). The record then also holds that file's size and sha256.
 
 --data must hold reference/boards.bin and reference/reference.json (tests/make_reference.py), plan.json
 (compiler/compile_onepass.py) and the model files onepass-c4-v2.onnx / onepass-c4-v2-int8.onnx.
@@ -17,6 +21,7 @@ import os
 import platform
 import statistics
 import subprocess
+import sys
 import threading
 from pathlib import Path
 
@@ -67,7 +72,14 @@ def main():
     p.add_argument("--runs", type=int, default=3)
     p.add_argument("--only", nargs="*", default=list(BACKENDS))
     p.add_argument("--out", type=Path, default=ROOT / "bench" / "results")
+    p.add_argument("--backend", action="append", default=[], metavar="NAME=QUERY", help="an extra backend row")
+    p.add_argument("--tag", help="suffix for the record's file name")
     a = p.parse_args()
+    for spec in a.backend:
+        name, _, query = spec.partition("=")
+        BACKENDS[name] = query
+    if a.backend and "--only" not in sys.argv:
+        a.only = list(BACKENDS)
     data = a.data.resolve()
     rel = os.path.relpath(data, ROOT)
     server = serve(ROOT)
@@ -84,6 +96,11 @@ def main():
                    for f in ("onepass-c4-v2.onnx", "onepass-c4-v2-int8.onnx")},
         "backends": {},
     }
+    for name in a.only:
+        query = dict(part.split("=", 1) for part in BACKENDS[name].split("&") if "=" in part)
+        if "file" in query:
+            path = (ROOT / "bench" / query["file"]).resolve()
+            record["models"][query["file"]] = {"bytes": path.stat().st_size, "sha256": hashlib.sha256(path.read_bytes()).hexdigest()}
     with sync_playwright() as pw:
         for name in a.only:
             runs = []
@@ -121,7 +138,7 @@ def main():
     server.shutdown()
     a.out.mkdir(parents=True, exist_ok=True)
     chip = record["machine"]["chip"].replace("Apple ", "").replace(" ", "")
-    path = a.out / f"{record['time_utc'][:10]}-{chip}-chrome.json"
+    path = a.out / f"{record['time_utc'][:10]}-{chip}-chrome{'-' + a.tag if a.tag else ''}.json"
     path.write_text(json.dumps(record, indent=1) + "\n")
     print(f"wrote {path}")
     for name, s in record["backends"].items():
